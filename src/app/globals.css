@@ -1,0 +1,224 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-ink: 17 17 17;
+  --color-paper: 245 245 245;
+  --color-forest: 17 17 17;
+  --color-lime: 245 245 245;
+  --color-line: 224 224 224;
+  color-scheme: light;
+  background: #f5f5f5;
+  color: #111111;
+}
+
+html[data-theme="dark"] {
+  --color-ink: 235 235 235;
+  --color-paper: 24 24 24;
+  --color-forest: 55 55 55;
+  --color-lime: 235 235 235;
+  --color-line: 65 65 65;
+  color-scheme: dark;
+  background: #151515;
+  color: #ebebeb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f5f5;
+  font-family: Arial, "Avenir Next", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="dark"] body {
+  background: #151515;
+}
+
+html:not([data-theme="dark"]) [class~="bg-[#fbfcf8]"],
+html:not([data-theme="dark"]) [class~="bg-[#f8faf7]"],
+html:not([data-theme="dark"]) [class~="bg-[#fafbf9]"],
+html:not([data-theme="dark"]) [class~="bg-[#f6f7f5]"],
+html:not([data-theme="dark"]) [class~="bg-[#f3f5f2]"],
+html:not([data-theme="dark"]) [class~="bg-[#f1f5ef]"],
+html:not([data-theme="dark"]) [class~="bg-[#f1f7ef]"],
+html:not([data-theme="dark"]) [class~="bg-[#f0f3ef]"],
+html:not([data-theme="dark"]) [class~="bg-[#f0f3ed]"],
+html:not([data-theme="dark"]) [class~="bg-[#edf4eb]"],
+html:not([data-theme="dark"]) [class~="bg-[#edf3ec]"],
+html:not([data-theme="dark"]) [class~="bg-[#edf2e9]"],
+html:not([data-theme="dark"]) [class~="bg-[#eaf1e9]"],
+html:not([data-theme="dark"]) [class~="bg-[#e8efe8]"],
+html:not([data-theme="dark"]) [class~="bg-[#f2f5f1]"],
+html:not([data-theme="dark"]) [class~="bg-[#f2f7f1]"],
+html:not([data-theme="dark"]) [class~="bg-[#f2f8f1]"] {
+  background-color: #f2f2f2;
+}
+
+html:not([data-theme="dark"]) [class~="hover:bg-[#f2f7f1]"]:hover,
+html:not([data-theme="dark"]) [class~="hover:bg-[#f2f5f1]"]:hover,
+html:not([data-theme="dark"]) [class~="hover:bg-[#edf2e9]"]:hover,
+html:not([data-theme="dark"]) [class~="hover:bg-[#e8efe8]"]:hover {
+  background-color: #eeeeee;
+}
+
+html:not([data-theme="dark"]) [class~="hover:bg-[#125840]"]:hover {
+  background-color: #333333;
+}
+
+html:not([data-theme="dark"]) [class~="text-[#40584a]"] {
+  color: #333333;
+}
+
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] [class~="bg-[#fbfcf8]"],
+html[data-theme="dark"] [class~="bg-[#f8faf7]"],
+html[data-theme="dark"] [class~="bg-[#fafbf9]"],
+html[data-theme="dark"] [class~="bg-[#f6f7f5]"],
+html[data-theme="dark"] [class~="bg-[#f3f5f2]"],
+html[data-theme="dark"] [class~="bg-[#f1f5ef]"],
+html[data-theme="dark"] [class~="bg-[#f1f7ef]"],
+html[data-theme="dark"] [class~="bg-[#f0f3ef]"],
+html[data-theme="dark"] [class~="bg-[#f0f3ed]"],
+html[data-theme="dark"] [class~="bg-[#edf4eb]"],
+html[data-theme="dark"] [class~="bg-[#edf3ec]"],
+html[data-theme="dark"] [class~="bg-[#edf2e9]"],
+html[data-theme="dark"] [class~="bg-[#eaf1e9]"],
+html[data-theme="dark"] [class~="bg-[#e8efe8]"],
+html[data-theme="dark"] [class~="bg-[#f2f5f1]"],
+html[data-theme="dark"] [class~="bg-[#f2f7f1]"],
+html[data-theme="dark"] [class~="bg-[#f2f8f1]"] {
+  background-color: #242424 !important;
+}
+
+html[data-theme="dark"] [class~="bg-[#fff7f5]"],
+html[data-theme="dark"] [class~="bg-[#fff4f1]"],
+html[data-theme="dark"] [class~="bg-[#fff1ed]"] {
+  background-color: #382724 !important;
+}
+
+html[data-theme="dark"] [class~="bg-[#fff3d8]"],
+html[data-theme="dark"] [class~="bg-[#fff1d4]"] {
+  background-color: #3a3322 !important;
+}
+
+html[data-theme="dark"] .text-ink {
+  color: #eeeeee !important;
+}
+
+html[data-theme="dark"] .text-forest {
+  color: #eeeeee !important;
+}
+
+html[data-theme="dark"] [class~="text-[#65716a]"],
+html[data-theme="dark"] [class~="text-[#748079]"],
+html[data-theme="dark"] [class~="text-[#87928b]"],
+html[data-theme="dark"] [class~="text-[#59665e]"],
+html[data-theme="dark"] [class~="text-[#56635c]"],
+html[data-theme="dark"] [class~="text-[#414e47]"],
+html[data-theme="dark"] [class~="text-[#40584a]"] {
+  color: #c4c4c4 !important;
+}
+
+html[data-theme="dark"] [class~="text-[#a23d2d]"],
+html[data-theme="dark"] [class~="text-[#853321]"] {
+  color: #f0a89a !important;
+}
+
+html[data-theme="dark"] [class~="border-[#e0e5df]"],
+html[data-theme="dark"] [class~="border-[#e8ece7]"],
+html[data-theme="dark"] [class~="border-[#e2e7e1]"],
+html[data-theme="dark"] [class~="border-[#e5e9e4]"],
+html[data-theme="dark"] [class~="border-[#edf0ec]"],
+html[data-theme="dark"] [class~="border-[#d6ddd6]"],
+html[data-theme="dark"] [class~="border-[#dce4dc]"],
+html[data-theme="dark"] [class~="border-[#cddbcf]"],
+html[data-theme="dark"] [class~="border-[#cdd6ce]"],
+html[data-theme="dark"] [class~="border-[#d6e6d9]"],
+html[data-theme="dark"] [class~="border-[#e7ece7]"],
+html[data-theme="dark"] [class~="border-[#e3c4bd]"],
+html[data-theme="dark"] [class~="border-[#f1d3cd]"],
+html[data-theme="dark"] [class~="border-[#ba4c35]"],
+html[data-theme="dark"] [class~="border-[#dce7da]"] {
+  border-color: #464646 !important;
+}
+
+html[data-theme="dark"] .border-line,
+html[data-theme="dark"] [class~="divide-line"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #464646 !important;
+}
+
+html[data-theme="dark"] .form-input,
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: #1c1c1c;
+  color: #ebebeb;
+  border-color: #555555;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #aaaaaa;
+}
+
+html[data-theme="dark"] [class~="hover:bg-[#f2f7f1]"]:hover,
+html[data-theme="dark"] [class~="hover:bg-[#f2f5f1]"]:hover,
+html[data-theme="dark"] [class~="hover:bg-[#edf2e9]"]:hover {
+  background-color: #333333 !important;
+}
+
+html[data-theme="dark"] [class~="hover:bg-[#125840]"]:hover {
+  background-color: #484848 !important;
+}
+
+html[data-theme="dark"] [class~="text-[#855a0b]"] {
+  color: #f1d68a !important;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  touch-action: manipulation;
+}
+
+.form-input {
+  @apply mt-2 block min-h-14 w-full rounded-xl border border-[#d6ddd6] bg-white px-4 py-3 text-base font-normal text-ink outline-none transition placeholder:text-[#87928b] focus:border-forest focus:ring-4 focus:ring-forest/10;
+}
+
+button {
+  min-height: 48px;
+}
+
+select,
+input:not([type="checkbox"]):not([type="radio"]),
+textarea {
+  font-size: 16px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  min-width: 26px;
+  min-height: 26px;
+  touch-action: manipulation;
+}
+
+@media (pointer: coarse) {
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:active,
+  a:active {
+    transform: scale(0.985);
+  }
+}
