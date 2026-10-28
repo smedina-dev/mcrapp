@@ -130,7 +130,7 @@ export default async function BicyclesPage({ searchParams }: BicyclesPageProps) 
       <section>
         <p className="rounded-xl bg-[#eaf1e9] px-4 py-3 text-sm text-[#40584a]">Las presiones se expresan en PSI; los valores de rebote, en clicks.</p>
         <div className="mt-4">
-          <BicycleManagement customers={customers} selectedCustomer={selectedCustomer ?? undefined} bicycles={filteredBicycles} returnToOrders={searchParams.return_to === "ordenes"} query={searchParams.q?.trim()} searchActive={query.length >= 2} hasMoreResults={hasMoreBicycleResults} />
+          <BicycleManagement customers={customers} selectedCustomer={selectedCustomer ?? undefined} bicycles={filteredBicycles} returnToReception={searchParams.return_to === "recepcion" || searchParams.return_to === "ordenes"} query={searchParams.q?.trim()} searchActive={query.length >= 2} hasMoreResults={hasMoreBicycleResults} />
         </div>
       </section>
     </>

@@ -104,13 +104,13 @@ type BicycleManagementProps = {
   customers: Customer[];
   selectedCustomer?: Customer;
   bicycles: Bicycle[];
-  returnToOrders?: boolean;
+  returnToReception?: boolean;
   query?: string;
   searchActive: boolean;
   hasMoreResults: boolean;
 };
 
-export function BicycleManagement({ customers, selectedCustomer, bicycles, returnToOrders, query = "", searchActive, hasMoreResults }: BicycleManagementProps) {
+export function BicycleManagement({ customers, selectedCustomer, bicycles, returnToReception, query = "", searchActive, hasMoreResults }: BicycleManagementProps) {
   const customerMap = new Map(customers.map((customer) => [customer.id, displayCustomerName(customer)]));
 
   return (
@@ -152,11 +152,11 @@ export function BicycleManagement({ customers, selectedCustomer, bicycles, retur
         <p className="mb-6 rounded-2xl border border-dashed border-[#cdd6ce] bg-white p-6 text-sm text-[#65716a]">No hay bicicletas que coincidan con la búsqueda.</p>
       ) : null}
 
-      <details id="registrar-bicicleta" open={Boolean(selectedCustomer || returnToOrders)} className="scroll-mt-6 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
+      <details id="registrar-bicicleta" open={Boolean(selectedCustomer || returnToReception)} className="scroll-mt-6 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
         <summary className="flex min-h-12 cursor-pointer items-center text-xl font-bold text-ink">Registrar bicicleta</summary>
         {selectedCustomer ? (
           <form action={addCustomerBicycleAction} className="mt-4">
-            {returnToOrders ? <input type="hidden" name="return_to" value="ordenes" /> : null}
+            {returnToReception ? <input type="hidden" name="return_to" value="recepcion" /> : null}
             <div className="grid gap-4 xl:grid-cols-2">
               <input type="hidden" name="cliente_id" value={selectedCustomer.id} />
               <p className="rounded-xl bg-[#f2f6f0] px-4 py-3 text-sm font-semibold text-ink">Propietario seleccionado: {displayCustomerName(selectedCustomer)}{selectedCustomer.peso_kg ? ` · ${selectedCustomer.peso_kg} kg` : ""}</p>

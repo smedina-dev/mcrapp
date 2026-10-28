@@ -57,6 +57,9 @@ export function WorkOrderIntakeForm({
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
   const [customerSearchError, setCustomerSearchError] = useState("");
+  const [expressMode, setExpressMode] = useState(false);
+  const [customServiceName, setCustomServiceName] = useState("");
+  const [customServicePrice, setCustomServicePrice] = useState("");
   const [customerBicycles, setCustomerBicycles] = useState(
     bicycles.filter((bicycle) => bicycle.cliente_id === defaultCustomerId),
   );
@@ -88,7 +91,13 @@ export function WorkOrderIntakeForm({
       const lineTotal = Math.round(process.importe_referencia! * (100 - discount)) / 100;
       return sum + lineTotal;
     }, 0);
-  const total = packageTotal + additionalTotal;
+ const customServicePriceValue = customServicePrice.trim() ? Number(customServicePrice) : 0;
+const validCustomPrice = Number.isFinite(customServicePriceValue) ? customServicePriceValue : 0;
+const total = packageTotal + additionalTotal + (expressMode ? validCustomPrice : 0);
+  const hasExpressWork = selectedProcesses.length > 0 || Boolean(customServiceName.trim());
+  const customServiceIsValid = customServiceName.trim()
+    ? customServicePrice.trim() !== "" && Number.isFinite(customServicePriceValue) && customServicePriceValue >= 0
+    : customServicePrice.trim() === "";
   const selectedBicycle = customerBicycles.find((bicycle) => bicycle.id === bicycleId);
   const inspectionItemCount = inspectionCategories.reduce((count, category) => count + category.items.length, 0);
   const completedInspectionCount = Object.keys(inspectionStatuses).filter((id) =>
@@ -180,7 +189,7 @@ export function WorkOrderIntakeForm({
     { id: "basico", label: "Básico", serviceCategory: "basico" },
     { id: "intermedio", label: "Intermedio", serviceCategory: "intermedio" },
     { id: "primer_service", label: "Primer service", serviceCategory: "primer_service" },
-    { id: "express", label: "Express", serviceCategory: "express" },
+    { id: "express", label: "Express (paquete)", serviceCategory: "express" },
     { id: "detallado", label: "Detallado", serviceCategory: "avanzado" },
   ];
   const activeServiceCategoryValue = serviceCategoryFilters.find(
@@ -245,7 +254,7 @@ export function WorkOrderIntakeForm({
           {customerSearch.trim().length > 0 && !isSearchingCustomers && !customerResults.length && !selectedCustomer && !customerSearchError
             ? <span className="mt-2 block text-xs font-normal text-[#748079]">No se encontraron clientes que comiencen con ese texto.</span>
             : null}
-          <Link href="/dashboard/clientes?return_to=ordenes#nuevo-cliente" className="mt-2 inline-block text-xs font-semibold text-forest underline-offset-2 hover:underline">Crear cliente nuevo</Link>
+          <Link href="/dashboard/clientes?return_to=recepcion#nuevo-cliente" className="mt-2 inline-block text-xs font-semibold text-forest underline-offset-2 hover:underline">Crear cliente nuevo</Link>
         </div>
         <div className="text-sm font-semibold">
           <label htmlFor="order-bike">Bicicleta</label>
@@ -263,9 +272,28 @@ export function WorkOrderIntakeForm({
           <input type="hidden" name="tiene_shock" value={selectedBicycle?.tiene_shock ? "true" : "false"} />
           {isLoadingBicycles ? <span className="mt-1 block text-xs font-normal text-[#748079]">Cargando bicicletas...</span> : null}
           {bicycleLoadError ? <span className="mt-1 block text-xs font-normal text-[#853321]" role="alert">{bicycleLoadError}</span> : null}
-          <span className="mt-1 block text-xs font-normal"><Link href={customerId ? `/dashboard/bicicletas?return_to=ordenes&cliente_id=${encodeURIComponent(customerId)}#registrar-bicicleta` : "/dashboard/bicicletas#registrar-bicicleta"} className="text-forest underline-offset-2 hover:underline">{customerId && customerBicycles.length === 0 ? "Este cliente no tiene bicicletas · agregar una" : "Agregar bicicleta"}</Link></span>
+          <span className="mt-1 block text-xs font-normal"><Link href={customerId ? `/dashboard/bicicletas?return_to=recepcion&cliente_id=${encodeURIComponent(customerId)}#registrar-bicicleta` : "/dashboard/bicicletas#registrar-bicicleta"} className="text-forest underline-offset-2 hover:underline">{customerId && customerBicycles.length === 0 ? "Este cliente no tiene bicicletas · agregar una" : "Agregar bicicleta"}</Link></span>
         </div>
       </div>
+      <label className="flex min-h-16 items-center gap-3 rounded-xl border border-[#f1d3a9] bg-[#fff9ec] px-4 py-3 text-sm font-bold text-[#704d0d]" htmlFor="order-express">
+        <input
+          id="order-express"
+          name="es_express"
+          type="checkbox"
+          checked={expressMode}
+          onChange={(event) => {
+            setExpressMode(event.target.checked);
+            setSelectedServices([]);
+            setSelectedProcesses([]);
+            setActiveCategory(null);
+          }}
+          className="h-6 w-6 shrink-0 accent-[#a66a00]"
+        />
+        <span>
+          Activar recepción EXPRESS
+          <span className="mt-1 block text-xs font-normal text-[#805f22]">Omitir checklist completo y dar prioridad al mecánico.</span>
+        </span>
+      </label>
       {selectedCustomer ? (
         <p className="rounded-xl bg-[#edf4eb] px-4 py-3 text-sm text-[#40584a]">
           Peso del ciclista para regular la suspensión: <strong>{selectedCustomer.peso_kg ? `${selectedCustomer.peso_kg} kg` : "sin registrar"}</strong>
@@ -273,7 +301,7 @@ export function WorkOrderIntakeForm({
         </p>
       ) : null}
 
-      <section className="space-y-3 rounded-2xl border border-[#e2e7e1] bg-[#f8faf7] p-4 sm:p-5" aria-labelledby="reception-condition-heading">
+      {!expressMode ? <section className="space-y-3 rounded-2xl border border-[#e2e7e1] bg-[#f8faf7] p-4 sm:p-5" aria-labelledby="reception-condition-heading">
         <div>
           <h3 id="reception-condition-heading" className="font-bold text-ink">1. Revisá la bicicleta</h3>
           <p className="mt-1 text-sm text-[#748079]">{bicycleId ? "Abrí el checklist para revisar los componentes. Podés desplegar cada categoría y cada punto cuando lo necesites." : "Elegí primero al cliente y su bicicleta para comenzar la inspección."}</p>
@@ -392,8 +420,8 @@ export function WorkOrderIntakeForm({
             </div>
           </div>
         </dialog>
-        {Object.entries(inspectionStatuses).map(([id, status]) => (
-          <input key={id} type="hidden" name="inspeccion_estado" value={`${id}:${status}`} />
+        {inspectionItems.map((item) => (
+          <input key={item.id} type="hidden" name="inspeccion_estado" value={`${item.id}:${expressMode ? "no_revisado" : inspectionStatuses[item.id] ?? ""}`} />
         ))}
         {inspectionItems.map((item) => (
           <input key={item.id} type="hidden" name="inspeccion_comentario" value={`${item.id}:${inspectionComments[item.id] ?? ""}`} />
@@ -429,17 +457,30 @@ export function WorkOrderIntakeForm({
           </div>
         </section>
         </fieldset>
-        <label className="block text-sm font-semibold" htmlFor="reception-observations">Observaciones del estado
-          <textarea key={`reception-observations-${bicycleId}`} id="reception-observations" name="observaciones_recepcion" autoComplete="off" maxLength={2000} rows={3} className="form-input min-h-24 resize-y" placeholder="Ej.: rayón previo en el cuadro, cubierta trasera gastada..." />
-        </label>
-        <div className="space-y-2 text-sm font-semibold">
-          <h4>Fotos de recepción <span className="text-[#a23d2d]">· al menos una obligatoria</span></h4>
-          <ReceptionPhotoInput key={bicycleId} />
-          <p className="text-xs font-normal text-[#748079]">La cámara solicita permiso y muestra una vista previa en vivo; en tablets intenta usar la cámara trasera. También podés elegir archivos como alternativa y combinar ambos orígenes. Se admiten hasta 5 fotos JPG, PNG o WebP de 4 MB como máximo cada una. La cámara requiere HTTPS (localhost en desarrollo).</p>
-        </div>
-      </section>
+      </section> : (
+        <>
+          {inspectionItems.map((item) => (
+            <input key={item.id} type="hidden" name="inspeccion_estado" value={`${item.id}:no_revisado`} />
+          ))}
+          {inspectionItems.map((item) => (
+            <input key={item.id} type="hidden" name="inspeccion_comentario" value={`${item.id}:`} />
+          ))}
+          <section className="rounded-2xl border border-[#f1d3a9] bg-[#fff9ec] p-4 text-sm text-[#704d0d]" aria-live="polite">
+            <h2 className="font-bold">Recepción rápida EXPRESS</h2>
+            <p className="mt-1">No se realizará el checklist completo. Seleccioná los procesos independientes o agregá un servicio con su precio.</p>
+          </section>
+        </>
+      )}
+      <label className="block text-sm font-semibold" htmlFor="reception-observations">Observaciones de recepción
+        <textarea key={`reception-observations-${bicycleId}`} id="reception-observations" name="observaciones_recepcion" autoComplete="off" maxLength={2000} rows={3} className="form-input min-h-24 resize-y" placeholder="Agregá una observación para el mecánico..." />
+      </label>
+      <div className="space-y-2 text-sm font-semibold">
+        <h4>Fotos de recepción <span className="text-[#a23d2d]">· al menos una obligatoria</span></h4>
+        <ReceptionPhotoInput key={bicycleId} />
+        <p className="text-xs font-normal text-[#748079]">La cámara solicita permiso y muestra una vista previa en vivo; en tablets intenta usar la cámara trasera. También podés elegir archivos como alternativa y combinar ambos orígenes. Se admiten hasta 5 fotos JPG, PNG o WebP de 4 MB como máximo cada una. La cámara requiere HTTPS (localhost en desarrollo).</p>
+      </div>
 
-      <fieldset disabled={!inspectionComplete} className={`space-y-4 transition-opacity ${inspectionComplete ? "" : "opacity-50"}`}>
+      {!expressMode ? <fieldset disabled={!inspectionComplete} className={`space-y-4 transition-opacity ${inspectionComplete ? "" : "opacity-50"}`}>
         <legend className="text-base font-bold text-ink">2. Elegí un servicio</legend>
         <p className="mt-1 text-sm text-[#748079]">{inspectionComplete ? "Elegí una categoría y seleccioná el paquete que corresponda. Podés elegir más de uno." : "Completá cada punto con su estado o marcá “No revisado” para habilitar los servicios."}</p>
         {services.length ? (
@@ -506,12 +547,14 @@ export function WorkOrderIntakeForm({
             ) : null}
           </>
         ) : <p className="mt-3 rounded-xl bg-[#f8faf7] p-4 text-sm text-[#65716a]">No hay paquetes cargados. Podés ingresar procesos adicionales.</p>}
-      </fieldset>
+      </fieldset> : null}
 
-      {inspectionComplete && (selectedServices.length || !services.length) ? <fieldset>
-        <legend className="text-base font-bold text-ink">Agregados por componente</legend>
+      {expressMode || (inspectionComplete && (selectedServices.length || !services.length)) ? <fieldset>
+        <legend className="text-base font-bold text-ink">{expressMode ? "Procesos independientes por componente" : "Agregados por componente"}</legend>
         <p className="mt-1 text-sm text-[#748079]">
-          {selectedServices.length
+          {expressMode
+            ? "Elegí los procesos que se realizarán; cada uno suma el precio de referencia configurado en el catálogo."
+            : selectedServices.length
             ? "Se aplica el descuento configurado para cada agregado adicional."
             : "Sin un servicio contratado, se cobra el precio de referencia completo."}
         </p>
@@ -600,14 +643,48 @@ export function WorkOrderIntakeForm({
         ) : <p className="mt-3 text-sm text-[#748079]">No hay procesos cargados.</p>}
       </fieldset> : null}
 
-      <div className="grid gap-4 border-t border-[#edf0ec] pt-5 sm:grid-cols-2">
+      {expressMode ? (
+        <section className="space-y-3 rounded-2xl border border-[#e2e7e1] bg-white p-4 sm:p-5" aria-labelledby="custom-service-heading">
+          <div>
+            <h2 id="custom-service-heading" className="font-bold text-ink">Servicio fuera del listado</h2>
+            <p className="mt-1 text-sm text-[#748079]">Opcional. Si lo completás, indicá también el precio para incluirlo en el total.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+            <label className="block text-sm font-semibold" htmlFor="custom-service-name">Descripción del servicio
+              <input
+                id="custom-service-name"
+                name="servicio_personalizado"
+                type="text"
+                maxLength={200}
+                value={customServiceName}
+                onChange={(event) => setCustomServiceName(event.target.value)}
+                placeholder="Ej.: centrado especial de rueda"
+                className="form-input"
+              />
+            </label>
+            <label className="block text-sm font-semibold" htmlFor="custom-service-price">Precio (ARS)
+              <input
+                id="custom-service-price"
+                name="servicio_personalizado_precio"
+                type="number"
+                min={0}
+                max={9999999999.99}
+                step="0.01"
+                required={Boolean(customServiceName.trim())}
+                value={customServicePrice}
+                onChange={(event) => setCustomServicePrice(event.target.value)}
+                placeholder="0,00"
+                className="form-input"
+              />
+            </label>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="grid gap-4 border-t border-[#edf0ec] pt-5">
         <label className="block text-sm font-semibold" htmlFor="order-due-date">
           Entrega estimada <span className="text-[#a23d2d]">*</span>
           <input id="order-due-date" name="fecha_entrega_estimada" autoComplete="off" type="date" required className="form-input" />
-        </label>
-        <label className="flex min-h-14 items-center gap-3 self-end rounded-xl border border-[#e2e7e1] bg-[#f8faf7] px-4 text-sm font-semibold" htmlFor="order-express">
-          <input id="order-express" name="es_express" type="checkbox" className="h-5 w-5 accent-forest" />
-          Servicio express
         </label>
       </div>
 
@@ -617,8 +694,20 @@ export function WorkOrderIntakeForm({
           <p className="text-2xl font-bold text-ink">${formatAmount(total)}</p>
           <p className="mt-1 text-xs text-[#748079]">Los precios quedan guardados como referencia. La recepción se cierra y se envía al mecánico; él la pasa a En proceso al comenzar. Los repuestos se conectarán en la etapa de integración externa.</p>
         </div>
-        <button type="submit" disabled={!customerId || !bicycleId || !inspectionComplete || isLoadingBicycles || selectedServices.length + selectedProcesses.length === 0} className="min-h-14 w-full rounded-xl bg-forest px-6 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-          Cerrar recepción y enviar al mecánico
+        <button
+          type="submit"
+          disabled={
+            !customerId
+            || !bicycleId
+            || (!expressMode && !inspectionComplete)
+            || isLoadingBicycles
+            || (expressMode
+              ? !hasExpressWork || !customServiceIsValid
+              : selectedServices.length + selectedProcesses.length === 0)
+          }
+          className="min-h-14 w-full rounded-xl bg-forest px-6 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+        >
+          {expressMode ? "Crear orden EXPRESS y enviar al mecánico" : "Cerrar recepción y enviar al mecánico"}
         </button>
       </div>
     </form>

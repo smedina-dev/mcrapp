@@ -116,7 +116,7 @@ export async function createWorkshopAction(formData: FormData) {
 export async function createCustomerAction(formData: FormData) {
   const parsed = customerSchema.safeParse(formValues(formData));
   if (!parsed.success) redirect("/dashboard/clientes?error=datos");
-  const returnToOrders = formData.get("return_to") === "ordenes";
+  const returnToReception = formData.get("return_to") === "recepcion" || formData.get("return_to") === "ordenes";
   const nombreCompleto = `${parsed.data.nombre} ${parsed.data.apellido}`;
   if (parsed.data.fecha_nacimiento && new Date(`${parsed.data.fecha_nacimiento}T00:00:00Z`) > new Date()) {
     redirect("/dashboard/clientes?error=fecha");
@@ -154,11 +154,12 @@ export async function createCustomerAction(formData: FormData) {
 
   revalidatePath("/dashboard/clientes");
   revalidatePath("/dashboard/agenda");
+  revalidatePath("/dashboard/recepcion");
   revalidatePath("/dashboard/ordenes");
   revalidatePath("/dashboard");
-  if (returnToOrders) {
+  if (returnToReception) {
     const bicycleQuery = createdBicycleId ? `&bicicleta_id=${createdBicycleId}` : "";
-    redirect(`/dashboard/ordenes?cliente_id=${customer.id}${bicycleQuery}#recepcion`);
+    redirect(`/dashboard/recepcion?cliente_id=${customer.id}${bicycleQuery}`);
   }
   redirect(`/dashboard/clientes/${customer.id}?creado=1`);
 }
@@ -191,6 +192,7 @@ export async function updateCustomerAction(formData: FormData) {
   revalidatePath(`/dashboard/clientes/${parsed.data.id}`);
   revalidatePath("/dashboard/bicicletas");
   revalidatePath("/dashboard/agenda");
+  revalidatePath("/dashboard/recepcion");
   revalidatePath("/dashboard/ordenes");
   revalidatePath("/dashboard");
   redirect(`/dashboard/clientes/${parsed.data.id}?actualizado=1`);
@@ -233,8 +235,8 @@ export async function addCustomerBicycleAction(formData: FormData) {
   revalidatePath("/dashboard/agenda");
   revalidatePath("/dashboard/ordenes");
   revalidatePath("/dashboard");
-  if (formData.get("return_to") === "ordenes") {
-    redirect(`/dashboard/ordenes?cliente_id=${customer.id}&bicicleta_id=${bicycle.id}#recepcion`);
+  if (formData.get("return_to") === "recepcion" || formData.get("return_to") === "ordenes") {
+    redirect(`/dashboard/recepcion?cliente_id=${customer.id}&bicicleta_id=${bicycle.id}`);
   }
   redirect("/dashboard/bicicletas?biciAgregada=1");
 }
@@ -551,7 +553,7 @@ export async function createWorkOrderAction(formData: FormData) {
     servicio_ids: formData.getAll("servicio_id"),
     proceso_ids: formData.getAll("proceso_id"),
   });
-  if (!parsed.success) redirect("/dashboard/ordenes?error=datos");
+  if (!parsed.success) redirect("/dashboard/recepcion?error=datos");
 
   const photoEntries = formData.getAll("fotos");
   const photos = photoEntries.filter((value): value is File => value instanceof File && value.size > 0);
@@ -565,14 +567,16 @@ export async function createWorkOrderAction(formData: FormData) {
     || photoEntries.some((value) => !(value instanceof File))
     || photos.some((photo) => !allowedPhotoTypes.has(photo.type) || photo.size > maxPhotoSize)
   ) {
-    redirect("/dashboard/ordenes?error=fotos");
+    redirect("/dashboard/recepcion?error=fotos");
   }
 
   const { supabase, workshop } = await requireWorkshop();
   const estimatedDate = parsed.data.fecha_entrega_estimada
     ? new Date(parsed.data.fecha_entrega_estimada)
     : null;
-  if (estimatedDate && Number.isNaN(estimatedDate.getTime())) redirect("/dashboard/ordenes?error=fecha");
+  if (estimatedDate && Number.isNaN(estimatedDate.getTime())) redirect("/dashboard/recepcion?error=fecha");
+  const customServiceName = parsed.data.servicio_personalizado?.trim() ?? "";
+  const customServicePrice = parsed.data.servicio_personalizado_precio;
   const { data: orderId, error } = await supabase.rpc("crear_orden_trabajo_con_inspeccion", {
     p_taller_id: workshop.id,
     p_cliente_id: parsed.data.cliente_id,
@@ -584,8 +588,10 @@ export async function createWorkOrderAction(formData: FormData) {
     p_inspeccion_recepcion: {
       observaciones: parsed.data.observaciones_recepcion?.trim() || null,
       desperfectos: [],
-      revision: buildInspectionResults(parsed.data.inspeccion_estado, parsed.data.inspeccion_comentario),
-      mantenimiento: {
+      revision: parsed.data.es_express
+        ? []
+        : buildInspectionResults(parsed.data.inspeccion_estado, parsed.data.inspeccion_comentario),
+      mantenimiento: parsed.data.es_express ? null : {
         ultimo_service: {
           meses: parsed.data.ultimo_service_meses === "" ? null : parsed.data.ultimo_service_meses ?? null,
           kilometros: parsed.data.ultimo_service_km === "" ? null : parsed.data.ultimo_service_km ?? null,
@@ -599,6 +605,9 @@ export async function createWorkOrderAction(formData: FormData) {
           kilometros: parsed.data.shock_service_km === "" ? null : parsed.data.shock_service_km ?? null,
         } : null,
       },
+      servicio_personalizado: customServiceName && customServicePrice !== null
+        ? { nombre: customServiceName, precio: customServicePrice }
+        : null,
     },
   });
   if (error) {
@@ -609,20 +618,44 @@ export async function createWorkOrderAction(formData: FormData) {
       hint: error.hint,
     });
     if (error.code === "PGRST202") {
-      redirect("/dashboard/ordenes?error=migracion");
+      redirect("/dashboard/recepcion?error=migracion");
     }
     if (error.code === "42883" && error.message.includes("crear_orden_trabajo_con_items")) {
-      redirect("/dashboard/ordenes?error=migracion-base");
+      redirect("/dashboard/recepcion?error=migracion-base");
     }
     if (error.code === "42703" && error.message.includes("recepcion_cerrada")) {
-      redirect("/dashboard/ordenes?error=migracion-esquema");
+      redirect("/dashboard/recepcion?error=migracion-esquema");
     }
-    redirect(`/dashboard/ordenes?error=${error.code === "23514" ? "seleccion" : "guardado"}`);
+    redirect(`/dashboard/recepcion?error=${error.code === "23514" ? "seleccion" : "guardado"}`);
   }
   if (!orderId) {
     console.error("Supabase no devolvió el identificador de la orden de trabajo.");
-    redirect("/dashboard/ordenes?error=guardado");
+    redirect("/dashboard/recepcion?error=guardado");
   }
+
+ if (customServiceName && customServicePrice !== null) {
+    if (!Number.isFinite(customServicePrice) || customServicePrice < 0) {
+      console.error("Precio de servicio personalizado inválido");
+      await discardUnfinishedOrder(supabase, workshop.id, orderId, []);
+      redirect("/dashboard/recepcion?error=guardado");
+    }
+
+    const { error: orderTotalUpdateError } = await supabase.rpc("incrementar_presupuesto_orden", {
+      p_orden_id: orderId,
+      p_taller_id: workshop.id,
+      p_incremento: customServicePrice,
+    });
+
+    if (orderTotalUpdateError) {
+      console.error("No se pudo actualizar el total de la orden con el servicio personalizado.", {
+        message: orderTotalUpdateError.message,
+      });
+      await discardUnfinishedOrder(supabase, workshop.id, orderId, []);
+      redirect("/dashboard/recepcion?error=guardado");
+    }
+  }
+
+ 
 
   const uploadedPaths: string[] = [];
   const extensionByType: Record<string, string> = {
@@ -644,9 +677,9 @@ export async function createWorkOrderAction(formData: FormData) {
       });
       await discardUnfinishedOrder(supabase, workshop.id, orderId, uploadedPaths);
       if (uploadError.message === "Bucket not found") {
-        redirect("/dashboard/ordenes?error=bucket");
+        redirect("/dashboard/recepcion?error=bucket");
       }
-      redirect("/dashboard/ordenes?error=fotos");
+      redirect("/dashboard/recepcion?error=fotos");
     }
     uploadedPaths.push(path);
   }
@@ -664,14 +697,15 @@ export async function createWorkOrderAction(formData: FormData) {
     });
     await discardUnfinishedOrder(supabase, workshop.id, orderId, uploadedPaths);
     if (finalizeError.code === "PGRST202") {
-      redirect("/dashboard/ordenes?error=migracion-cierre");
+      redirect("/dashboard/recepcion?error=migracion-cierre");
     }
-    redirect("/dashboard/ordenes?error=cierre");
+    redirect("/dashboard/recepcion?error=cierre");
   }
 
   revalidatePath("/dashboard/ordenes");
+  revalidatePath("/dashboard/recepcion");
   revalidatePath("/dashboard");
-  redirect("/dashboard/ordenes?creado=1");
+  redirect(`/dashboard/ordenes?creado=${parsed.data.es_express ? "express" : "1"}`);
 }
 
 export async function updateWorkOrderStateAction(formData: FormData) {

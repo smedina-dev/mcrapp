@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bike, CalendarDays, ClipboardList, LayoutDashboard, Shield, UsersRound, Wrench } from "lucide-react";
+import { Bike, CalendarDays, ClipboardList, ClipboardPlus, LayoutDashboard, Shield, UsersRound, Wrench } from "lucide-react";
 
 const baseNavigation = [
   { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
   { href: "/dashboard/clientes", label: "Clientes", icon: UsersRound },
   { href: "/dashboard/bicicletas", label: "Bicicletas", icon: Bike },
   { href: "/dashboard/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/dashboard/recepcion", label: "Recepción", icon: ClipboardPlus },
   { href: "/dashboard/ordenes", label: "Órdenes de trabajo", icon: ClipboardList },
 ];
 

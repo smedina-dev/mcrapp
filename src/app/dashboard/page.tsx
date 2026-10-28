@@ -33,8 +33,8 @@ export default async function DashboardPage() {
           <h1 className="mt-2 break-words text-2xl font-bold leading-tight sm:text-3xl">Buen día, {displayName}</h1>
           <p className="mt-2 text-sm text-[#d4dfd8]">Este es el estado de tu operación.</p>
         </div>
-        <Link href="/dashboard/ordenes" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] px-5 py-3 text-sm font-bold text-[#111111] hover:bg-[#e5e5e5]">
-          Nueva orden <ArrowUpRight size={18} />
+        <Link href="/dashboard/recepcion" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] px-5 py-3 text-sm font-bold text-[#111111] hover:bg-[#e5e5e5]">
+          Nueva recepción <ArrowUpRight size={18} />
         </Link>
       </header>
       <section aria-label="Indicadores" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

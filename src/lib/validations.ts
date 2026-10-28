@@ -179,6 +179,15 @@ export const workOrderSchema = z.object({
   es_express: z.boolean(),
   fecha_entrega_estimada: z.string().date(),
   observaciones_recepcion: z.string().trim().max(2000).optional(),
+  servicio_personalizado: z.string().trim().max(200).optional(),
+  servicio_personalizado_precio: z.preprocess(
+    (value) => {
+      if (value === "" || value === undefined) return null;
+      if (typeof value === "string" && /^(?:\d{1,10}(?:\.\d{1,2})?|\.\d{1,2})$/.test(value)) return Number(value);
+      return Number.NaN;
+    },
+    z.coerce.number().min(0).max(9999999999.99).nullable(),
+  ),
   inspeccion_estado: z.array(z.string()).length(inspectionItemIdSet.size).refine((entries) => {
     const parsedEntries = entries.map((entry) => {
       const separator = entry.indexOf(":");
@@ -211,8 +220,18 @@ export const workOrderSchema = z.object({
   tiene_shock: z.enum(["true", "false"]),
   servicio_ids: z.array(z.string().uuid()).max(100),
   proceso_ids: z.array(z.string().uuid()).max(200),
-}).refine((data) => data.servicio_ids.length + data.proceso_ids.length > 0, {
-  message: "La orden debe incluir al menos un servicio o proceso",
+}).refine((data) => {
+  const hasCustomService = Boolean(data.servicio_personalizado);
+  const hasCustomServicePrice = data.servicio_personalizado_precio !== null;
+  if (hasCustomService !== hasCustomServicePrice) return false;
+  if (data.es_express) {
+    return data.servicio_ids.length === 0
+      && (data.proceso_ids.length > 0 || hasCustomService);
+  }
+  return !hasCustomService
+    && data.servicio_ids.length + data.proceso_ids.length > 0;
+}, {
+  message: "La orden debe incluir un proceso o servicio válido",
 });
 
 export const workOrderStateSchema = z.object({

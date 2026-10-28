@@ -125,7 +125,7 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
         </section>
 
         <section className="rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold text-ink">Órdenes de trabajo</h2><Link href={`/dashboard/ordenes?cliente_id=${customer.id}#recepcion`} className="text-sm font-bold text-forest hover:underline">Nueva orden</Link></div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold text-ink">Órdenes de trabajo</h2><Link href={`/dashboard/recepcion?cliente_id=${customer.id}`} className="text-sm font-bold text-forest hover:underline">Nueva recepción</Link></div>
           <ul className="mt-4 divide-y divide-[#edf0ec]">
             {(orders ?? []).map((order) => (
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-3">

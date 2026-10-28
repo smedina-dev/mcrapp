@@ -4,6 +4,7 @@ import { CustomerFields } from "@/components/customer-fields";
 import { requireWorkshop } from "@/lib/workshop";
 
 type CustomersPageProps = { searchParams: { q?: string; error?: string; creado?: string; actualizado?: string; return_to?: string } };
+const isReceptionReturn = (returnTo?: string) => returnTo === "recepcion" || returnTo === "ordenes";
 
 const SEARCH_RESULT_LIMIT = 20;
 const SEARCH_COLUMNS = ["nombre_completo", "dni", "telefono", "email"] as const;
@@ -55,7 +56,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       {searchParams.actualizado ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Datos del cliente actualizados.</p> : null}
 
       <form id="nuevo-cliente" action={createCustomerAction} className="scroll-mt-6 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-        {searchParams.return_to === "ordenes" ? <input type="hidden" name="return_to" value="ordenes" /> : null}
+        {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-forest">Registro</p>
           <h2 className="mt-1 text-xl font-bold text-ink">Registrar cliente</h2>
@@ -71,11 +72,11 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         <h2 id="customer-search-heading" className="text-xl font-bold text-ink">Buscar cliente</h2>
         <p className="mt-1 text-sm text-[#748079]">Buscá por nombre, DNI, teléfono o correo electrónico.</p>
         <form method="get" role="search" className="mt-3 flex gap-2 rounded-2xl border border-[#e2e7e1] bg-white p-3 shadow-sm">
-          {searchParams.return_to === "ordenes" ? <input type="hidden" name="return_to" value="ordenes" /> : null}
+          {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
           <label className="sr-only" htmlFor="customer-search">Buscar clientes</label>
           <input id="customer-search" name="q" type="search" minLength={2} maxLength={100} defaultValue={query} placeholder="Nombre, DNI, teléfono o correo" className="form-input mt-0 min-w-0" />
           <button type="submit" className="min-h-12 shrink-0 rounded-xl bg-forest px-5 text-sm font-bold text-white hover:bg-[#125840]">Buscar</button>
-          {query ? <Link href={searchParams.return_to === "ordenes" ? "/dashboard/clientes?return_to=ordenes" : "/dashboard/clientes"} className="shrink-0 self-center text-sm font-semibold text-forest hover:underline">Limpiar</Link> : null}
+          {query ? <Link href={isReceptionReturn(searchParams.return_to) ? "/dashboard/clientes?return_to=recepcion" : "/dashboard/clientes"} className="shrink-0 self-center text-sm font-semibold text-forest hover:underline">Limpiar</Link> : null}
         </form>
         {query.length < 2 ? (
           <p className="mt-4 rounded-xl border border-dashed border-[#cdd6ce] bg-white px-5 py-8 text-center text-sm text-[#65716a]">Ingresá al menos 2 caracteres para buscar. No cargamos clientes hasta que hagas una búsqueda.</p>
