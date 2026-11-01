@@ -28,15 +28,15 @@ export type Database = {
         Relationships: [];
       };
       servicio: {
-        Row: { id: string; taller_id: string; nombre: string; categoria: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base: number; tiempo_estimado_min: number; checklist_plantilla: Json | null; created_at: string | null };
-        Insert: { id?: string; taller_id: string; nombre: string; categoria: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base?: number; tiempo_estimado_min?: number; checklist_plantilla?: Json | null; created_at?: string | null };
-        Update: { id?: string; taller_id?: string; nombre?: string; categoria?: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base?: number; tiempo_estimado_min?: number; checklist_plantilla?: Json | null; created_at?: string | null };
+        Row: { id: string; taller_id: string; nombre: string; categoria: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base: number; tiempo_estimado_min: number; checklist_plantilla: Json | null; guia_proceso: string | null; created_at: string | null };
+        Insert: { id?: string; taller_id: string; nombre: string; categoria: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base?: number; tiempo_estimado_min?: number; checklist_plantilla?: Json | null; guia_proceso?: string | null; created_at?: string | null };
+        Update: { id?: string; taller_id?: string; nombre?: string; categoria?: Database["public"]["Enums"]["categoria_servicio_enum"]; precio_base?: number; tiempo_estimado_min?: number; checklist_plantilla?: Json | null; guia_proceso?: string | null; created_at?: string | null };
         Relationships: [];
       };
       proceso_servicio: {
-        Row: { id: string; taller_id: string; nombre: string; categoria_componente: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia: number | null; descuento_servicio_pct: number; tiempo_estimado_min: number | null; created_at: string };
-        Insert: { id?: string; taller_id: string; nombre: string; categoria_componente?: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia?: number | null; descuento_servicio_pct?: number; tiempo_estimado_min?: number | null; created_at?: string };
-        Update: { id?: string; taller_id?: string; nombre?: string; categoria_componente?: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia?: number | null; descuento_servicio_pct?: number; tiempo_estimado_min?: number | null; created_at?: string };
+        Row: { id: string; taller_id: string; nombre: string; categoria_componente: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia: number | null; descuento_servicio_pct: number; tiempo_estimado_min: number | null; guia_proceso: string | null; created_at: string };
+        Insert: { id?: string; taller_id: string; nombre: string; categoria_componente?: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia?: number | null;         descuento_servicio_pct?: number; tiempo_estimado_min?: number | null; guia_proceso?: string | null; created_at?: string };
+                Update: { id?: string; taller_id?: string; nombre?: string; categoria_componente?: Database["public"]["Enums"]["categoria_componente_enum"]; importe_referencia?: number | null; descuento_servicio_pct?: number; tiempo_estimado_min?: number | null; guia_proceso?: string | null; created_at?: string };
         Relationships: [];
       };
       servicio_proceso: {
@@ -64,9 +64,9 @@ export type Database = {
         Relationships: [];
       };
       orden_trabajo: {
-        Row: { id: string; numero_ot: number; taller_id: string; cliente_id: string; bicicleta_id: string; ot_garantia_id: string | null; estado: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express: boolean | null; inspeccion_recepcion: Json | null; recomendaciones: Json | null; fotos: Json | null; bitacora_comunicaciones: Json | null; presupuesto_total: number; recepcion_cerrada: boolean; fecha_ingreso: string | null; fecha_entrega_estimada: string | null; fecha_cierre: string | null; created_at: string | null };
-        Insert: { id?: string; numero_ot?: number; taller_id: string; cliente_id: string; bicicleta_id: string; ot_garantia_id?: string | null; estado?: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express?: boolean | null; inspeccion_recepcion?: Json | null; recomendaciones?: Json | null; fotos?: Json | null; bitacora_comunicaciones?: Json | null; presupuesto_total?: number; recepcion_cerrada?: boolean; fecha_ingreso?: string | null; fecha_entrega_estimada?: string | null; fecha_cierre?: string | null; created_at?: string | null };
-        Update: { id?: string; numero_ot?: number; taller_id?: string; cliente_id?: string; bicicleta_id?: string; ot_garantia_id?: string | null; estado?: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express?: boolean | null; inspeccion_recepcion?: Json | null; recomendaciones?: Json | null; fotos?: Json | null; bitacora_comunicaciones?: Json | null; presupuesto_total?: number; recepcion_cerrada?: boolean; fecha_ingreso?: string | null; fecha_entrega_estimada?: string | null; fecha_cierre?: string | null; created_at?: string | null };
+        Row: { id: string; numero_ot: number; taller_id: string; cliente_id: string; bicicleta_id: string; ot_garantia_id: string | null; estado: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express: boolean | null; inspeccion_recepcion: Json | null; recomendaciones: Json | null; fotos: Json | null; bitacora_comunicaciones: Json | null; presupuesto_total: number; recepcion_cerrada: boolean; mecanico_id: string | null; margen_extra: number; token_seguimiento: string; codigo_corto: string; seguimiento_enviado_at: string | null; prioridad: string; fecha_ingreso: string | null; fecha_entrega_estimada: string | null; fecha_cierre: string | null; created_at: string | null };
+        Insert: { id?: string; numero_ot?: number; taller_id: string; cliente_id: string; bicicleta_id: string; ot_garantia_id?: string | null; estado?: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express?: boolean | null; inspeccion_recepcion?: Json | null; recomendaciones?: Json | null; fotos?: Json | null; bitacora_comunicaciones?: Json | null; presupuesto_total?: number; recepcion_cerrada?: boolean; mecanico_id?: string | null; margen_extra?: number; token_seguimiento?: string; codigo_corto?: string; seguimiento_enviado_at?: string | null; prioridad?: string; fecha_ingreso?: string | null; fecha_entrega_estimada?: string | null; fecha_cierre?: string | null; created_at?: string | null };
+        Update: { id?: string; numero_ot?: number; taller_id?: string; cliente_id?: string; bicicleta_id?: string; ot_garantia_id?: string | null; estado?: Database["public"]["Enums"]["estado_ot_enum"] | null; es_express?: boolean | null; inspeccion_recepcion?: Json | null; recomendaciones?: Json | null; fotos?: Json | null; bitacora_comunicaciones?: Json | null; presupuesto_total?: number; recepcion_cerrada?: boolean; mecanico_id?: string | null; margen_extra?: number; token_seguimiento?: string; codigo_corto?: string; seguimiento_enviado_at?: string | null; prioridad?: string; fecha_ingreso?: string | null; fecha_entrega_estimada?: string | null; fecha_cierre?: string | null; created_at?: string | null };
         Relationships: [];
       };
       orden_trabajo_servicio: {
@@ -81,6 +81,30 @@ export type Database = {
         Update: { id?: string; orden_trabajo_id?: string; proceso_id?: string; precio_lista?: number; descuento_porcentaje?: number; precio_aplicado?: number; created_at?: string };
         Relationships: [];
       };
+      orden_trabajo_checklist: {
+        Row: { id: string; orden_trabajo_id: string; proceso_id: string; completado: boolean; completado_at: string | null; completado_por: string | null; mecanico_id: string | null };
+        Insert: { id?: string; orden_trabajo_id: string; proceso_id: string; completado?: boolean; completado_at?: string | null; completado_por?: string | null; mecanico_id?: string | null };
+        Update: { id?: string; orden_trabajo_id?: string; proceso_id?: string; completado?: boolean; completado_at?: string | null; completado_por?: string | null; mecanico_id?: string | null };
+        Relationships: [];
+      };
+      orden_trabajo_foto: {
+        Row: { id: string; orden_trabajo_id: string; proceso_id: string | null; ruta: string; descripcion: string; compartida: boolean; creado_por: string | null; created_at: string };
+        Insert: { id?: string; orden_trabajo_id: string; proceso_id?: string | null; ruta: string; descripcion: string; compartida?: boolean; creado_por?: string | null; created_at?: string };
+        Update: { id?: string; orden_trabajo_id?: string; proceso_id?: string | null; ruta?: string; descripcion?: string; compartida?: boolean; creado_por?: string | null; created_at?: string };
+        Relationships: [];
+      };
+      orden_trabajo_consulta: {
+        Row: { id: string; orden_trabajo_id: string; mensaje: string; monto: number | null; estado: "pendiente" | "autorizada" | "rechazada"; comentario_cliente: string | null; creado_por: string | null; created_at: string; respondida_at: string | null };
+        Insert: { id?: string; orden_trabajo_id: string; mensaje: string; monto?: number | null; estado?: "pendiente" | "autorizada" | "rechazada"; comentario_cliente?: string | null; creado_por?: string | null; created_at?: string; respondida_at?: string | null };
+        Update: { id?: string; orden_trabajo_id?: string; mensaje?: string; monto?: number | null; estado?: "pendiente" | "autorizada" | "rechazada"; comentario_cliente?: string | null; creado_por?: string | null; created_at?: string; respondida_at?: string | null };
+        Relationships: [];
+      };
+      orden_trabajo_extra: {
+        Row: { id: string; orden_trabajo_id: string; descripcion: string; monto: number; consulta_id: string | null; creado_por: string | null; created_at: string };
+        Insert: { id?: string; orden_trabajo_id: string; descripcion: string; monto: number; consulta_id?: string | null; creado_por?: string | null; created_at?: string };
+        Update: { id?: string; orden_trabajo_id?: string; descripcion?: string; monto?: number; consulta_id?: string | null; creado_por?: string | null; created_at?: string };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -91,12 +115,13 @@ export type Database = {
       crear_servicio_con_procesos: { Args: { p_taller_id: string; p_nombre: string; p_categoria: Database["public"]["Enums"]["categoria_servicio_enum"]; p_precio_base: number; p_tiempo_estimado_min: number; p_proceso_ids: string[] }; Returns: string };
       crear_orden_trabajo_con_inspeccion: { Args: { p_taller_id: string; p_cliente_id: string; p_bicicleta_id: string; p_es_express: boolean; p_fecha_entrega_estimada: string | null; p_servicio_ids: string[]; p_proceso_ids: string[]; p_inspeccion_recepcion: Json }; Returns: string };
       finalizar_recepcion_orden_trabajo: { Args: { p_orden_trabajo_id: string; p_fotos: string[] }; Returns: undefined };
+      incrementar_presupuesto_orden: { Args: { p_orden_id: string; p_taller_id: string; p_incremento: number }; Returns: undefined };
     };
     Enums: {
       categoria_servicio_enum: "basico" | "intermedio" | "avanzado" | "primer_service" | "agregado" | "express";
       categoria_componente_enum: "ruedas" | "frenos" | "caja_pedalera" | "horquilla" | "asiento" | "transmision" | "shock" | "cuadro" | "general";
       estado_turno_enum: "pendiente" | "confirmado" | "cancelado" | "en_taller";
-      estado_ot_enum: "recepcion" | "en_proceso" | "espera_repuesto" | "listo" | "entregado";
+      estado_ot_enum: "recepcion" | "en_proceso" | "espera_repuesto" | "para_control" | "listo" | "entregado";
       disciplina_bici_enum: "mtb_xc" | "mtb_enduro_dh" | "mtb_enduro" | "mtb_dh" | "ruta" | "gravel" | "urbana" | "ebike" | "otra";
     };
     CompositeTypes: { [_ in never]: never };

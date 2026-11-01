@@ -25,13 +25,55 @@ export const processComponentCategories: {
   { id: "general", label: "General / otros", description: "Tareas sin componente específico" },
 ];
 
+export const workOrderPriorities = {
+  baja: { label: "Baja", badge: "bg-[#2e9e5b] text-white", selected: "border-[#2e9e5b] bg-[#e7f6ec] text-[#1c6b3c]", dot: "bg-[#2e9e5b]" },
+  normal: { label: "Normal", badge: "bg-[#f2c200] text-[#4a3a00]", selected: "border-[#d4a900] bg-[#fff8d6] text-[#6b5400]", dot: "bg-[#f2c200]" },
+  alta: { label: "Alta", badge: "bg-[#ec7a1c] text-white", selected: "border-[#ec7a1c] bg-[#fdeedd] text-[#9a4c0a]", dot: "bg-[#ec7a1c]" },
+  pre_carrera: { label: "Pre Carrera", badge: "bg-[#d62f2f] text-white", selected: "border-[#d62f2f] bg-[#fde8e8] text-[#9b1c1c]", dot: "bg-[#d62f2f]" },
+  express: { label: "Express", badge: "bg-[#1f6fd1] text-white", selected: "border-[#1f6fd1] bg-[#e5f0fd] text-[#164f96]", dot: "bg-[#1f6fd1]" },
+} as const;
+
+export type WorkOrderPriority = keyof typeof workOrderPriorities;
+
+export const workOrderPriorityOrder: WorkOrderPriority[] = ["baja", "normal", "alta", "pre_carrera", "express"];
+
+const priorityRank: Record<WorkOrderPriority, number> = { express: 0, pre_carrera: 1, alta: 2, normal: 3, baja: 4 };
+
+export function priorityOf(value: string | null | undefined): WorkOrderPriority {
+  return value && value in workOrderPriorities ? (value as WorkOrderPriority) : "normal";
+}
+
+export function comparePriority(a: string | null | undefined, b: string | null | undefined) {
+  return priorityRank[priorityOf(a)] - priorityRank[priorityOf(b)];
+}
+
 export const workOrderStates: Record<Database["public"]["Enums"]["estado_ot_enum"], string> = {
   recepcion: "Recepción",
   en_proceso: "En proceso",
   espera_repuesto: "Espera repuesto",
+  para_control: "Para control",
   listo: "Listo",
   entregado: "Entregado",
 };
+
+export type WorkOrderState = keyof typeof workOrderStates;
+
+const restrictedOrderStates: WorkOrderState[] = ["listo", "entregado"];
+
+export function canManageRestrictedStates(accessRole: string) {
+  return accessRole === "admin" || accessRole === "jefe_taller";
+}
+
+// Estados que el rol puede asignar a una orden.
+export function assignableOrderStates(accessRole: string): WorkOrderState[] {
+  const all = Object.keys(workOrderStates) as WorkOrderState[];
+  return canManageRestrictedStates(accessRole) ? all : all.filter((state) => !restrictedOrderStates.includes(state));
+}
+
+// "Listo" solo lo ve admin/jefe; "Entregado" se ve únicamente en historiales.
+export function isOrderStateRestricted(state: string | null | undefined) {
+  return restrictedOrderStates.includes((state ?? "recepcion") as WorkOrderState);
+}
 
 export const appointmentStates: Record<Database["public"]["Enums"]["estado_turno_enum"], string> = {
   pendiente: "Pendiente",

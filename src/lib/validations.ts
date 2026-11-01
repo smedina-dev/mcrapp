@@ -92,7 +92,10 @@ export const serviceSchema = z.object({
   precio_base: z.coerce.number().min(0).max(9999999999.99),
   tiempo_estimado_min: z.coerce.number().int().min(1).max(100000),
   proceso_ids: z.array(z.string().uuid()).max(200),
+  guia_proceso: z.string().trim().max(5000).optional().transform((value) => value || null),
 });
+
+export const updateServiceSchema = serviceSchema.extend({ id: z.string().uuid() });
 
 export const processSchema = z.object({
   nombre: requiredText("El nombre del proceso"),
@@ -101,10 +104,13 @@ export const processSchema = z.object({
     (value) => value === "" || value === undefined ? null : value,
     z.coerce.number().min(0).max(9999999999.99).nullable(),
   ),
+  guia_proceso: z.string().trim().max(5000).optional().transform((value) => value || null),
 });
 
 export const updateServiceProcessSchema = z.object({
   id: z.string().uuid(),
+  nombre: requiredText("El nombre del proceso"),
+  guia_proceso: z.string().trim().max(5000).optional().transform((value) => value || null),
   categoria_componente: z.enum(["ruedas", "frenos", "caja_pedalera", "horquilla", "asiento", "transmision", "shock", "cuadro", "general"]),
   importe_referencia: z.coerce.number().min(0).max(9999999999.99),
   descuento_servicio_pct: z.coerce.number().min(0).max(100),
@@ -177,6 +183,14 @@ export const workOrderSchema = z.object({
   cliente_id: z.string().uuid(),
   bicicleta_id: z.string().uuid(),
   es_express: z.boolean(),
+  margen_extra: z.preprocess(
+    (value) => {
+      if (value === "" || value === undefined || value === null) return 0;
+      if (typeof value === "string" && /^\d{1,10}(?:\.\d{1,2})?$/.test(value)) return Number(value);
+      return Number.NaN;
+    },
+    z.coerce.number().min(0).max(9999999999.99),
+  ),
   fecha_entrega_estimada: z.string().date(),
   observaciones_recepcion: z.string().trim().max(2000).optional(),
   servicio_personalizado: z.string().trim().max(200).optional(),
@@ -236,7 +250,73 @@ export const workOrderSchema = z.object({
 
 export const workOrderStateSchema = z.object({
   id: z.string().uuid(),
-  estado: z.enum(["recepcion", "en_proceso", "espera_repuesto", "listo", "entregado"]),
+  estado: z.enum(["recepcion", "en_proceso", "espera_repuesto", "para_control", "listo", "entregado"]),
+});
+
+export const checklistToggleSchema = z.object({
+  orden_id: z.string().uuid(),
+  proceso_id: z.string().uuid(),
+  completado: z.enum(["true", "false"]),
+});
+
+export const mechanicAssignmentSchema = z.object({
+  orden_id: z.string().uuid(),
+  proceso_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  mecanico_id: z.union([z.string().uuid(), z.literal("")]),
+});
+
+export const processPhotoSchema = z.object({
+  orden_id: z.string().uuid(),
+  proceso_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  descripcion: z.string().trim().min(3).max(500),
+});
+
+const moneyField = z.preprocess(
+  (value) => {
+    if (value === "" || value === undefined || value === null) return null;
+    if (typeof value === "string" && /^\d{1,10}(?:\.\d{1,2})?$/.test(value)) return Number(value);
+    return Number.NaN;
+  },
+  z.coerce.number().min(0).max(9999999999.99).nullable(),
+);
+
+export const orderMarginSchema = z.object({
+  orden_id: z.string().uuid(),
+  margen_extra: moneyField.transform((value) => value ?? 0),
+});
+
+export const orderQuerySchema = z.object({
+  orden_id: z.string().uuid(),
+  mensaje: z.string().trim().min(3).max(1000),
+  monto: moneyField,
+});
+
+export const orderExtraSchema = z.object({
+  orden_id: z.string().uuid(),
+  descripcion: z.string().trim().min(2).max(300),
+  monto: moneyField.refine((value) => value !== null, "Monto requerido"),
+});
+
+export const orderExtraDeleteSchema = z.object({
+  orden_id: z.string().uuid(),
+  id: z.string().uuid(),
+});
+
+export const photoShareSchema = z.object({
+  orden_id: z.string().uuid(),
+  id: z.string().uuid(),
+  compartida: z.enum(["true", "false"]),
+});
+
+export const trackingSendSchema = z.object({
+  orden_id: z.string().uuid(),
+});
+
+export const queryResponseSchema = z.object({
+  token: z.string().min(32).max(128),
+  consulta_id: z.string().uuid(),
+  decision: z.enum(["autorizada", "rechazada"]),
+  comentario: z.string().trim().max(1000).optional(),
 });
 
 export const appointmentStateSchema = z.object({

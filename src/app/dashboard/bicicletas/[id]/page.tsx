@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BicycleDetail } from "@/components/bicycle-management";
+import { PriorityBadge } from "@/components/priority-badge";
+import { canManageRestrictedStates, formatAmount, formatDate, workOrderStates } from "@/lib/presentation";
 import { requireWorkshop } from "@/lib/workshop";
 
 type BicycleDetailPageProps = {
@@ -9,7 +11,12 @@ type BicycleDetailPageProps = {
 };
 
 export default async function BicycleDetailPage({ params, searchParams }: BicycleDetailPageProps) {
-  const { supabase, workshop } = await requireWorkshop();
+  const { supabase, workshop, accessRole } = await requireWorkshop();
+  const { data: bicycleOrders } = await supabase.from("orden_trabajo")
+    .select("id, numero_ot, estado, prioridad, presupuesto_total, fecha_ingreso, fecha_cierre")
+    .eq("taller_id", workshop.id).eq("bicicleta_id", params.id)
+    .or(canManageRestrictedStates(accessRole) ? "estado.not.is.null" : "estado.neq.listo")
+    .order("created_at", { ascending: false }).limit(30);
   const [
     { data: bicycle, error: bicycleError },
     { data: customers, error: customersError },
@@ -43,6 +50,20 @@ export default async function BicycleDetailPage({ params, searchParams }: Bicycl
       {searchParams.actualizado ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Configuración de bicicleta actualizada.</p> : null}
       {searchParams.transferida ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Bicicleta transferida. Se reinició la configuración de suspensión para el nuevo propietario.</p> : null}
       <BicycleDetail bicycle={bicycle} customers={customers ?? []} ownershipHistory={ownershipHistory ?? []} />
-    </>
+            <section className="mt-6 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="text-xl font-bold text-ink">Historial de órdenes</h2>
+              <ul className="mt-4 divide-y divide-[#edf0ec]">
+                {(bicycleOrders ?? []).map((order) => (
+                  <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                    <div>
+                      <Link href={`/dashboard/ordenes/${order.id}`} className="font-semibold text-ink hover:text-forest hover:underline">OT #{order.numero_ot} · {order.estado ? workOrderStates[order.estado] : "Sin estado"}</Link>
+                      <p className="mt-1 text-sm text-[#65716a]">{formatDate(order.fecha_ingreso)}{order.fecha_cierre ? ` · Entregada ${formatDate(order.fecha_cierre)}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-3"><PriorityBadge priority={order.prioridad} /><p className="text-sm font-bold text-forest">${formatAmount(order.presupuesto_total)}</p></div>
+                  </li>
+                ))}
+              </ul>
+              {!bicycleOrders?.length ? <p className="mt-3 text-sm text-[#65716a]">Esta bicicleta todavía no tiene órdenes.</p> : null}
+            </section>    </>
   );
 }

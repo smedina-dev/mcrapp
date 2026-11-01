@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createWorkOrderAction } from "@/app/actions";
 import { ReceptionPhotoInput } from "@/components/reception-photo-input";
-import { formatAmount, processComponentCategories, serviceCategories } from "@/lib/presentation";
+import { formatAmount, processComponentCategories, serviceCategories, workOrderPriorities, workOrderPriorityOrder, type WorkOrderPriority } from "@/lib/presentation";
 import type { Database } from "@/lib/database.types";
 import {
   inspectionCategories,
@@ -57,7 +57,8 @@ export function WorkOrderIntakeForm({
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
   const [isSearchingCustomers, setIsSearchingCustomers] = useState(false);
   const [customerSearchError, setCustomerSearchError] = useState("");
-  const [expressMode, setExpressMode] = useState(false);
+  const [priority, setPriority] = useState<WorkOrderPriority>("normal");
+  const expressMode = priority === "express";
   const [customServiceName, setCustomServiceName] = useState("");
   const [customServicePrice, setCustomServicePrice] = useState("");
   const [customerBicycles, setCustomerBicycles] = useState(
@@ -275,25 +276,37 @@ const total = packageTotal + additionalTotal + (expressMode ? validCustomPrice :
           <span className="mt-1 block text-xs font-normal"><Link href={customerId ? `/dashboard/bicicletas?return_to=recepcion&cliente_id=${encodeURIComponent(customerId)}#registrar-bicicleta` : "/dashboard/bicicletas#registrar-bicicleta"} className="text-forest underline-offset-2 hover:underline">{customerId && customerBicycles.length === 0 ? "Este cliente no tiene bicicletas · agregar una" : "Agregar bicicleta"}</Link></span>
         </div>
       </div>
-      <label className="flex min-h-16 items-center gap-3 rounded-xl border border-[#f1d3a9] bg-[#fff9ec] px-4 py-3 text-sm font-bold text-[#704d0d]" htmlFor="order-express">
-        <input
-          id="order-express"
-          name="es_express"
-          type="checkbox"
-          checked={expressMode}
-          onChange={(event) => {
-            setExpressMode(event.target.checked);
-            setSelectedServices([]);
-            setSelectedProcesses([]);
-            setActiveCategory(null);
-          }}
-          className="h-6 w-6 shrink-0 accent-[#a66a00]"
-        />
-        <span>
-          Activar recepción EXPRESS
-          <span className="mt-1 block text-xs font-normal text-[#805f22]">Omitir checklist completo y dar prioridad al mecánico.</span>
-        </span>
-      </label>
+      <fieldset>
+        <legend className="text-sm font-bold text-ink">Prioridad de la orden</legend>
+        <input type="hidden" name="prioridad" value={priority} />
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {workOrderPriorityOrder.map((id) => {
+            const config = workOrderPriorities[id];
+            const active = priority === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  const goingExpress = id === "express";
+                  if (goingExpress !== expressMode) {
+                    setSelectedServices([]);
+                    setSelectedProcesses([]);
+                    setActiveCategory(null);
+                  }
+                  setPriority(id);
+                }}
+                className={`flex min-h-14 items-center justify-center gap-2 rounded-xl border-2 px-3 text-sm font-bold transition ${active ? config.selected : "border-[#e2e7e1] bg-white text-[#56635c] hover:bg-[#fafbf9]"}`}
+              >
+                <span aria-hidden="true" className={`h-3 w-3 rounded-full ${config.dot}`} />
+                {config.label}
+              </button>
+            );
+          })}
+        </div>
+        {expressMode ? <p className="mt-2 text-xs text-[#164f96]">Recepción EXPRESS: se omite el checklist completo y se da prioridad al mecánico.</p> : null}
+      </fieldset>
       {selectedCustomer ? (
         <p className="rounded-xl bg-[#edf4eb] px-4 py-3 text-sm text-[#40584a]">
           Peso del ciclista para regular la suspensión: <strong>{selectedCustomer.peso_kg ? `${selectedCustomer.peso_kg} kg` : "sin registrar"}</strong>
@@ -681,7 +694,12 @@ const total = packageTotal + additionalTotal + (expressMode ? validCustomPrice :
         </section>
       ) : null}
 
-      <div className="grid gap-4 border-t border-[#edf0ec] pt-5">
+      <div className="grid gap-4 border-t border-[#edf0ec] pt-5 sm:grid-cols-2">
+        <label className="block text-sm font-semibold" htmlFor="order-extra-margin">
+          Margen para gastos extra ($)
+          <input id="order-extra-margin" name="margen_extra" type="number" inputMode="decimal" min="0" step="0.01" defaultValue="0" className="form-input" />
+          <span className="mt-1 block text-xs font-normal text-[#748079]">Monto adicional que el cliente autoriza gastar en repuestos o servicios no presupuestados. Superado este monto, hay que consultarle.</span>
+        </label>
         <label className="block text-sm font-semibold" htmlFor="order-due-date">
           Entrega estimada <span className="text-[#a23d2d]">*</span>
           <input id="order-due-date" name="fecha_entrega_estimada" autoComplete="off" type="date" required className="form-input" />

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { updateCustomerAction } from "@/app/actions";
 import { CustomerFields } from "@/components/customer-fields";
 import { UnassignedBicycleLinker } from "@/components/unassigned-bicycle-linker";
-import { appointmentStates, bicycleDisciplines, formatAmount, formatDate, workOrderStates } from "@/lib/presentation";
+import { appointmentStates, bicycleDisciplines, canManageRestrictedStates, formatAmount, formatDate, workOrderStates } from "@/lib/presentation";
 import { requireWorkshop } from "@/lib/workshop";
 
 type CustomerDetailPageProps = {
@@ -12,7 +12,7 @@ type CustomerDetailPageProps = {
 };
 
 export default async function CustomerDetailPage({ params, searchParams }: CustomerDetailPageProps) {
-  const { supabase, workshop } = await requireWorkshop();
+  const { supabase, workshop, accessRole } = await requireWorkshop();
   const [
     { data: customer, error: customerError },
     { data: bicycles, error: bicyclesError },
@@ -31,7 +31,7 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
       .eq("taller_id", workshop.id).is("cliente_id", null).order("created_at", { ascending: false }),
     supabase.from("orden_trabajo")
       .select("id, numero_ot, estado, presupuesto_total, fecha_ingreso, fecha_entrega_estimada, fecha_cierre")
-      .eq("taller_id", workshop.id).eq("cliente_id", params.id).order("created_at", { ascending: false }).limit(20),
+      .eq("taller_id", workshop.id).eq("cliente_id", params.id).or(canManageRestrictedStates(accessRole) ? "estado.not.is.null" : "estado.neq.listo").order("created_at", { ascending: false }).limit(20),
     supabase.from("agenda_turno")
       .select("id, bicicleta_id, fecha_hora, estado, observaciones")
       .eq("taller_id", workshop.id).eq("cliente_id", params.id).order("fecha_hora", { ascending: false }).limit(20),
@@ -129,7 +129,7 @@ export default async function CustomerDetailPage({ params, searchParams }: Custo
           <ul className="mt-4 divide-y divide-[#edf0ec]">
             {(orders ?? []).map((order) => (
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                <div><p className="font-semibold text-ink">OT #{order.numero_ot} · {order.estado ? workOrderStates[order.estado] : "Sin estado"}</p><p className="mt-1 text-sm text-[#65716a]">{formatDate(order.fecha_ingreso)}{order.fecha_entrega_estimada ? ` · Entrega estimada ${formatDate(order.fecha_entrega_estimada)}` : ""}</p></div>
+                <div><Link href={`/dashboard/ordenes/${order.id}`} className="font-semibold text-ink hover:text-forest hover:underline">OT #{order.numero_ot} · {order.estado ? workOrderStates[order.estado] : "Sin estado"}</Link><p className="mt-1 text-sm text-[#65716a]">{formatDate(order.fecha_ingreso)}{order.fecha_entrega_estimada ? ` · Entrega estimada ${formatDate(order.fecha_entrega_estimada)}` : ""}</p></div>
                 <p className="text-sm font-bold text-forest">${formatAmount(order.presupuesto_total)}</p>
               </li>
             ))}

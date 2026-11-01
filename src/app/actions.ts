@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { clearLoginFailures, isLoginBlocked, registerLoginFailure } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, requireCatalogManager, requireWorkshop } from "@/lib/workshop";
 import { buildInspectionResults } from "@/lib/bicycle-inspection";
+import { canManageRestrictedStates, isOrderStateRestricted, priorityOf } from "@/lib/presentation";
+import { sendTrackingEmail, trackingUrl } from "@/lib/tracking";
 import {
   appointmentSchema,
   appointmentStateSchema,
@@ -16,6 +19,7 @@ import {
   invitationPasswordSchema,
   processSchema,
   serviceSchema,
+  updateServiceSchema,
   serviceProcessesSchema,
   updateServiceProcessSchema,
   updateCustomerSchema,
@@ -23,6 +27,16 @@ import {
   signUpSchema,
   workOrderSchema,
   workOrderStateSchema,
+  checklistToggleSchema,
+  mechanicAssignmentSchema,
+  processPhotoSchema,
+  orderMarginSchema,
+  orderQuerySchema,
+  orderExtraSchema,
+  orderExtraDeleteSchema,
+  photoShareSchema,
+  trackingSendSchema,
+  queryResponseSchema,
   workshopSchema,
   transferBicycleSchema,
   linkBicycleToCustomerSchema,
@@ -62,9 +76,15 @@ async function discardUnfinishedOrder(
 export async function signInAction(formData: FormData) {
   const parsed = signInSchema.safeParse(formValues(formData));
   if (!parsed.success) redirect("/login?error=datos");
+  const limitKeys = [`email:${parsed.data.email.toLowerCase()}`];
+  if (isLoginBlocked(limitKeys)) redirect("/login?error=bloqueado");
   const supabase = createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  if (error) redirect("/login?error=credenciales");
+  if (error) {
+    registerLoginFailure(limitKeys);
+    redirect(isLoginBlocked(limitKeys) ? "/login?error=bloqueado" : "/login?error=credenciales");
+  }
+  clearLoginFailures(limitKeys);
   redirect("/dashboard");
 }
 
@@ -115,11 +135,16 @@ export async function createWorkshopAction(formData: FormData) {
 
 export async function createCustomerAction(formData: FormData) {
   const parsed = customerSchema.safeParse(formValues(formData));
-  if (!parsed.success) redirect("/dashboard/clientes?error=datos");
   const returnToReception = formData.get("return_to") === "recepcion" || formData.get("return_to") === "ordenes";
+  const customerPageQuery = new URLSearchParams({ crear: "1" });
+  if (returnToReception) customerPageQuery.set("return_to", "recepcion");
+
+  if (!parsed.success) {
+    redirect(`/dashboard/clientes?${customerPageQuery.toString()}&error=datos`);
+  }
   const nombreCompleto = `${parsed.data.nombre} ${parsed.data.apellido}`;
   if (parsed.data.fecha_nacimiento && new Date(`${parsed.data.fecha_nacimiento}T00:00:00Z`) > new Date()) {
-    redirect("/dashboard/clientes?error=fecha");
+    redirect(`/dashboard/clientes?${customerPageQuery.toString()}&error=fecha`);
   }
   const { supabase, workshop } = await requireWorkshop();
   const { data: customer, error } = await supabase.from("cliente").insert({
@@ -135,7 +160,7 @@ export async function createCustomerAction(formData: FormData) {
     altura_cm: parsed.data.altura_cm || null,
     peso_kg: parsed.data.peso_kg || null,
   }).select("id").single();
-  if (error) redirect(`/dashboard/clientes?error=${error.code === "23505" ? "dni-duplicado" : "guardado"}`);
+  if (error) redirect(`/dashboard/clientes?${customerPageQuery.toString()}&error=${error.code === "23505" ? "dni-duplicado" : "guardado"}`);
 
   let createdBicycleId: string | null = null;
   if (parsed.data.bicicleta) {
@@ -147,7 +172,7 @@ export async function createCustomerAction(formData: FormData) {
     }).select("id").single();
     if (bicycleError) {
       await supabase.from("cliente").delete().eq("id", customer.id).eq("taller_id", workshop.id);
-      redirect("/dashboard/clientes?error=bicicleta");
+      redirect(`/dashboard/clientes?${customerPageQuery.toString()}&error=bicicleta`);
     }
     createdBicycleId = bicycle.id;
   }
@@ -334,7 +359,7 @@ export async function createServiceAction(formData: FormData) {
   });
   if (!parsed.success) redirect("/dashboard/servicios?error=datos");
   const { supabase, workshop } = await requireCatalogManager();
-  const { error } = await supabase.rpc("crear_servicio_con_procesos", {
+  const { data: serviceId, error } = await supabase.rpc("crear_servicio_con_procesos", {
     p_taller_id: workshop.id,
     p_nombre: parsed.data.nombre,
     p_categoria: parsed.data.categoria,
@@ -342,39 +367,81 @@ export async function createServiceAction(formData: FormData) {
     p_tiempo_estimado_min: parsed.data.tiempo_estimado_min,
     p_proceso_ids: parsed.data.proceso_ids,
   });
-  if (error) redirect("/dashboard/servicios?error=guardado");
+  if (error || !serviceId) redirect("/dashboard/servicios?error=guardado");
+  if (parsed.data.guia_proceso) {
+    const { error: guideError } = await supabase.from("servicio")
+      .update({ guia_proceso: parsed.data.guia_proceso })
+      .eq("id", serviceId).eq("taller_id", workshop.id);
+    if (guideError) redirect(`/dashboard/servicios/${serviceId}?error=guia`);
+  }
   revalidatePath("/dashboard/servicios");
   redirect("/dashboard/servicios?creado=1");
 }
 
+export async function updateServiceAction(formData: FormData) {
+  const parsed = updateServiceSchema.safeParse({
+    ...formValues(formData),
+    proceso_ids: formData.getAll("proceso_id"),
+  });
+  const serviceId = String(formData.get("id") ?? "");
+  if (!parsed.success) redirect(`/dashboard/servicios/${encodeURIComponent(serviceId)}?error=datos`);
+  const { supabase, workshop } = await requireCatalogManager();
+  const { data: service, error } = await supabase.from("servicio").update({
+    nombre: parsed.data.nombre,
+    categoria: parsed.data.categoria,
+    precio_base: parsed.data.precio_base,
+    tiempo_estimado_min: parsed.data.tiempo_estimado_min,
+    guia_proceso: parsed.data.guia_proceso,
+  }).eq("id", parsed.data.id).eq("taller_id", workshop.id).select("id").maybeSingle();
+  if (error || !service) redirect(`/dashboard/servicios/${parsed.data.id}?error=guardado`);
+  const { error: processesError } = await supabase.rpc("reemplazar_procesos_servicio", {
+    p_servicio_id: service.id,
+    p_proceso_ids: parsed.data.proceso_ids,
+  });
+  if (processesError) redirect(`/dashboard/servicios/${parsed.data.id}?error=procesos`);
+  revalidatePath("/dashboard/servicios");
+  revalidatePath(`/dashboard/servicios/${parsed.data.id}`);
+  revalidatePath("/dashboard/ordenes");
+  redirect(`/dashboard/servicios/${parsed.data.id}?actualizado=1`);
+}
+
 export async function createServiceProcessAction(formData: FormData) {
   const parsed = processSchema.safeParse(formValues(formData));
-  if (!parsed.success) redirect("/dashboard/servicios?vista=procesos&error=proceso");
+  const lockedPart = String(formData.get("parte") ?? "");
+  const listQuery = lockedPart && processSchema.shape.categoria_componente.safeParse(lockedPart).success
+    ? `vista=procesos&modo=partes&parte=${lockedPart}`
+    : `vista=procesos&modo=${formData.get("modo") === "partes" ? "partes" : "lista"}`;
+  if (!parsed.success) redirect(`/dashboard/servicios?${listQuery}&error=proceso`);
   const { supabase, workshop } = await requireCatalogManager();
   const { error } = await supabase.from("proceso_servicio").insert({
     taller_id: workshop.id,
     nombre: parsed.data.nombre,
     categoria_componente: parsed.data.categoria_componente,
     importe_referencia: parsed.data.importe_referencia,
+    guia_proceso: parsed.data.guia_proceso,
   });
-  if (error) redirect(`/dashboard/servicios?vista=procesos&error=${error.code === "23505" ? "proceso-duplicado" : "proceso"}`);
+  if (error) redirect(`/dashboard/servicios?${listQuery}&error=${error.code === "23505" ? "proceso-duplicado" : "proceso"}`);
   revalidatePath("/dashboard/servicios");
-  redirect("/dashboard/servicios?vista=procesos&procesoCreado=1");
+  redirect(`/dashboard/servicios?${listQuery}&procesoCreado=1`);
 }
 
 export async function updateServiceProcessAction(formData: FormData) {
   const parsed = updateServiceProcessSchema.safeParse(formValues(formData));
-  if (!parsed.success) redirect("/dashboard/servicios?vista=procesos&error=proceso");
+  const processId = encodeURIComponent(String(formData.get("id") ?? ""));
+  if (!parsed.success) redirect(`/dashboard/servicios/proceso/${processId}?error=proceso`);
   const { supabase, workshop } = await requireCatalogManager();
   const { data, error } = await supabase.from("proceso_servicio").update({
+    nombre: parsed.data.nombre,
     categoria_componente: parsed.data.categoria_componente,
     importe_referencia: parsed.data.importe_referencia,
     descuento_servicio_pct: parsed.data.descuento_servicio_pct,
+    guia_proceso: parsed.data.guia_proceso,
   }).eq("id", parsed.data.id).eq("taller_id", workshop.id).select("id").maybeSingle();
-  if (error || !data) redirect("/dashboard/servicios?vista=procesos&error=proceso");
+  if (error || !data) redirect(`/dashboard/servicios/proceso/${parsed.data.id}?error=${error?.code === "23505" ? "proceso-duplicado" : "proceso"}`);
   revalidatePath("/dashboard/servicios");
+  revalidatePath(`/dashboard/servicios/proceso/${parsed.data.id}`);
   revalidatePath("/dashboard/ordenes");
-  redirect("/dashboard/servicios?vista=procesos&procesoActualizado=1");
+  redirect(`/dashboard/servicios/proceso/${parsed.data.id}?actualizado=1`);
 }
 
 export async function updateServiceProcessesAction(formData: FormData) {
@@ -545,9 +612,11 @@ export async function createAppointmentAction(formData: FormData) {
 }
 
 export async function createWorkOrderAction(formData: FormData) {
+  const priorityInput = String(formData.get("prioridad") ?? "normal");
+  const priority = priorityOf(priorityInput);
   const parsed = workOrderSchema.safeParse({
     ...formValues(formData),
-    es_express: formData.get("es_express") === "on",
+    es_express: priority === "express",
     inspeccion_estado: formData.getAll("inspeccion_estado"),
     inspeccion_comentario: formData.getAll("inspeccion_comentario"),
     servicio_ids: formData.getAll("servicio_id"),
@@ -633,6 +702,18 @@ export async function createWorkOrderAction(formData: FormData) {
     redirect("/dashboard/recepcion?error=guardado");
   }
 
+  const { error: priorityError } = await supabase
+    .from("orden_trabajo")
+    .update({ prioridad: priority, margen_extra: parsed.data.margen_extra })
+    .eq("id", orderId)
+    .eq("taller_id", workshop.id);
+
+  if (priorityError) {
+    console.error("No se pudo guardar la prioridad de la orden.", { message: priorityError.message });
+    await discardUnfinishedOrder(supabase, workshop.id, orderId, []);
+    redirect(`/dashboard/recepcion?error=${priorityError.code === "42703" ? "migracion-esquema" : "guardado"}`);
+  }
+
  if (customServiceName && customServicePrice !== null) {
     if (!Number.isFinite(customServicePrice) || customServicePrice < 0) {
       console.error("Precio de servicio personalizado inválido");
@@ -711,15 +792,158 @@ export async function createWorkOrderAction(formData: FormData) {
 export async function updateWorkOrderStateAction(formData: FormData) {
   const parsed = workOrderStateSchema.safeParse(formValues(formData));
   if (!parsed.success) redirect("/dashboard/ordenes?error=datos");
-  const { supabase, workshop } = await requireWorkshop();
+  const { supabase, workshop, accessRole } = await requireWorkshop();
+  const { data: current } = await supabase.from("orden_trabajo").select("estado, seguimiento_enviado_at")
+    .eq("id", parsed.data.id).eq("taller_id", workshop.id).maybeSingle();
+  const isManager = canManageRestrictedStates(accessRole);
+  if (!current || (!isManager && (isOrderStateRestricted(current.estado) || isOrderStateRestricted(parsed.data.estado)))) {
+    redirect("/dashboard/ordenes?error=permisos");
+  }
   const { error } = await supabase.from("orden_trabajo").update({
     estado: parsed.data.estado,
     fecha_cierre: parsed.data.estado === "entregado" ? new Date().toISOString() : null,
   }).eq("id", parsed.data.id).eq("taller_id", workshop.id);
   if (error) redirect("/dashboard/ordenes?error=estado");
+  if (parsed.data.estado === "en_proceso" && current.estado !== "en_proceso" && !current.seguimiento_enviado_at) {
+    await deliverTracking(supabase, workshop.nombre, parsed.data.id, "Ya estamos trabajando en tu bicicleta.");
+  }
   revalidatePath("/dashboard/ordenes");
   revalidatePath("/dashboard");
+  if (formData.get("volver") === "detalle") redirect(`/dashboard/ordenes/${parsed.data.id}`);
   redirect("/dashboard/ordenes?actualizado=1");
+}
+
+async function orderProcessIds(supabase: ReturnType<typeof createClient>, orderId: string) {
+  const [{ data: orderServices }, { data: extraProcesses }] = await Promise.all([
+    supabase.from("orden_trabajo_servicio").select("servicio_id").eq("orden_trabajo_id", orderId),
+    supabase.from("orden_trabajo_proceso").select("proceso_id").eq("orden_trabajo_id", orderId),
+  ]);
+  const serviceIds = (orderServices ?? []).map((item) => item.servicio_id);
+  const { data: serviceProcesses } = serviceIds.length
+    ? await supabase.from("servicio_proceso").select("proceso_id").in("servicio_id", serviceIds)
+    : { data: [] };
+  return new Set([
+    ...(extraProcesses ?? []).map((item) => item.proceso_id),
+    ...(serviceProcesses ?? []).map((item) => item.proceso_id),
+  ]);
+}
+
+export async function toggleChecklistItemAction(orderIdInput: string, processIdInput: string, doneInput: boolean): Promise<{ ok: boolean }> {
+  const parsed = checklistToggleSchema.safeParse({
+    orden_id: orderIdInput,
+    proceso_id: processIdInput,
+    completado: doneInput ? "true" : "false",
+  });
+  if (!parsed.success) return { ok: false };
+  const { orden_id: orderId, proceso_id: processId } = parsed.data;
+  const done = parsed.data.completado === "true";
+  const { supabase, workshop, user } = await requireWorkshop();
+
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", orderId).eq("taller_id", workshop.id).maybeSingle();
+  if (!order || !(await orderProcessIds(supabase, orderId)).has(processId)) return { ok: false };
+
+  const { error } = await supabase.from("orden_trabajo_checklist").upsert({
+    orden_trabajo_id: orderId,
+    proceso_id: processId,
+    completado: done,
+    completado_at: done ? new Date().toISOString() : null,
+    completado_por: done ? user.id : null,
+  }, { onConflict: "orden_trabajo_id,proceso_id" });
+  if (error) {
+    console.error("No se pudo guardar el checklist.", { code: error.code, message: error.message });
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+export async function assignMechanicAction(formData: FormData) {
+  const parsed = mechanicAssignmentSchema.safeParse(formValues(formData));
+  if (!parsed.success) redirect("/dashboard/ordenes?error=datos");
+  const { orden_id: orderId, proceso_id: processId, mecanico_id: mechanicId } = parsed.data;
+  const { supabase, workshop } = await requireWorkshop();
+  const detailPath = `/dashboard/ordenes/${orderId}`;
+
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", orderId).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+
+  if (mechanicId) {
+    const { data: mechanic } = await supabase.from("empleado").select("id")
+      .eq("id", mechanicId).eq("taller_id", workshop.id).eq("activo", true).maybeSingle();
+    if (!mechanic) redirect(`${detailPath}?error=mecanico`);
+  }
+
+  if (processId) {
+    if (!(await orderProcessIds(supabase, orderId)).has(processId)) redirect(`${detailPath}?error=mecanico`);
+    const { error } = await supabase.from("orden_trabajo_checklist").upsert({
+      orden_trabajo_id: orderId,
+      proceso_id: processId,
+      mecanico_id: mechanicId || null,
+    }, { onConflict: "orden_trabajo_id,proceso_id" });
+    if (error) {
+      console.error("No se pudo asignar el mecánico al proceso.", { code: error.code, message: error.message });
+      redirect(`${detailPath}?error=mecanico`);
+    }
+  } else {
+    const { error } = await supabase.from("orden_trabajo").update({ mecanico_id: mechanicId || null })
+      .eq("id", orderId).eq("taller_id", workshop.id);
+    if (error) {
+      console.error("No se pudo asignar el mecánico a la orden.", { code: error.code, message: error.message });
+      redirect(`${detailPath}?error=mecanico`);
+    }
+  }
+  revalidatePath(detailPath);
+  redirect(detailPath);
+}
+
+export async function addProcessPhotoAction(formData: FormData) {
+  const parsed = processPhotoSchema.safeParse(formValues(formData));
+  const orderId = String(formData.get("orden_id") ?? "");
+  if (!parsed.success) redirect(`/dashboard/ordenes/${orderId}/fotos/nueva?error=datos`);
+  const { supabase, workshop, user } = await requireWorkshop();
+  const base = `/dashboard/ordenes/${parsed.data.orden_id}`;
+
+  const photo = formData.get("foto");
+  const extensionByType: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+  if (!(photo instanceof File) || photo.size === 0 || !extensionByType[photo.type] || photo.size > 4 * 1024 * 1024) {
+    redirect(`${base}/fotos/nueva?error=foto`);
+  }
+
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+
+  const processId = parsed.data.proceso_id || null;
+  if (processId && !(await orderProcessIds(supabase, order.id)).has(processId)) {
+    redirect(`${base}/fotos/nueva?error=datos`);
+  }
+
+  const path = `${workshop.id}/${order.id}/${crypto.randomUUID()}.${extensionByType[photo.type]}`;
+  const { error: uploadError } = await supabase.storage.from("ordenes-trabajo").upload(
+    path,
+    new Uint8Array(await photo.arrayBuffer()),
+    { contentType: photo.type, upsert: false },
+  );
+  if (uploadError) {
+    console.error("No se pudo subir la foto del proceso.", { message: uploadError.message });
+    redirect(`${base}/fotos/nueva?error=subida`);
+  }
+
+  const { error } = await supabase.from("orden_trabajo_foto").insert({
+    orden_trabajo_id: order.id,
+    proceso_id: processId,
+    ruta: path,
+    descripcion: parsed.data.descripcion,
+    creado_por: user.id,
+  });
+  if (error) {
+    console.error("No se pudo registrar la foto del proceso.", { code: error.code, message: error.message });
+    await supabase.storage.from("ordenes-trabajo").remove([path]);
+    redirect(`${base}/fotos/nueva?error=${error.code === "42P01" || error.code === "PGRST205" ? "migracion" : "guardado"}`);
+  }
+  revalidatePath(`${base}/fotos`);
+  redirect(`${base}/fotos?agregada=1`);
 }
 
 export async function updateAppointmentStateAction(formData: FormData) {
@@ -732,4 +956,159 @@ export async function updateAppointmentStateAction(formData: FormData) {
   revalidatePath("/dashboard/agenda");
   revalidatePath("/dashboard");
   redirect("/dashboard/agenda?actualizado=1");
+}
+
+
+type TrackingDelivery = "ok" | "sin-email" | "sin-configurar" | "error";
+
+async function deliverTracking(
+  supabase: ReturnType<typeof createClient>,
+  workshopName: string,
+  orderId: string,
+  note?: string,
+  markSent = true,
+): Promise<TrackingDelivery> {
+  const { data: order } = await supabase.from("orden_trabajo")
+    .select("numero_ot, codigo_corto, cliente_id").eq("id", orderId).maybeSingle();
+  if (!order) return "error";
+  const { data: customer } = await supabase.from("cliente")
+    .select("nombre_completo, email").eq("id", order.cliente_id).maybeSingle();
+  if (!customer?.email) return "sin-email";
+  const result = await sendTrackingEmail({
+    to: customer.email,
+    customerName: customer.nombre_completo,
+    orderNumber: order.numero_ot,
+    url: trackingUrl(order.codigo_corto),
+    workshopName,
+    note,
+  });
+  if (!result.ok) return result.reason === "sin-configurar" ? "sin-configurar" : "error";
+  if (markSent) await supabase.from("orden_trabajo").update({ seguimiento_enviado_at: new Date().toISOString() }).eq("id", orderId);
+  return "ok";
+}
+
+export async function sendTrackingAction(formData: FormData) {
+  const parsed = trackingSendSchema.safeParse(formValues(formData));
+  if (!parsed.success) redirect("/dashboard/ordenes?error=datos");
+  const { supabase, workshop } = await requireWorkshop();
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+  const result = await deliverTracking(supabase, workshop.nombre, order.id);
+  revalidatePath(`/dashboard/ordenes/${order.id}`);
+  redirect(`/dashboard/ordenes/${order.id}?seguimiento=${result}`);
+}
+
+export async function updateOrderMarginAction(formData: FormData) {
+  const parsed = orderMarginSchema.safeParse(formValues(formData));
+  const base = `/dashboard/ordenes/${String(formData.get("orden_id") ?? "")}`;
+  if (!parsed.success) redirect(`${base}?error=margen-datos`);
+  const { supabase, workshop } = await requireWorkshop();
+  const { error } = await supabase.from("orden_trabajo").update({ margen_extra: parsed.data.margen_extra })
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id);
+  if (error) redirect(`${base}?error=margen-datos`);
+  revalidatePath(base);
+  redirect(`${base}?margen=1`);
+}
+
+export async function createOrderQueryAction(formData: FormData) {
+  const parsed = orderQuerySchema.safeParse(formValues(formData));
+  const base = `/dashboard/ordenes/${String(formData.get("orden_id") ?? "")}`;
+  if (!parsed.success) redirect(`${base}?error=consulta-datos`);
+  const { supabase, workshop, user } = await requireWorkshop();
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+  const { error } = await supabase.from("orden_trabajo_consulta").insert({
+    orden_trabajo_id: order.id,
+    mensaje: parsed.data.mensaje,
+    monto: parsed.data.monto,
+    creado_por: user.id,
+  });
+  if (error) {
+    console.error("No se pudo crear la consulta.", { code: error.code, message: error.message });
+    redirect(`${base}?error=${error.code === "42P01" || error.code === "PGRST205" ? "migracion" : "consulta-datos"}`);
+  }
+  const delivery = await deliverTracking(supabase, workshop.nombre, order.id, "Tenemos una consulta sobre tu bicicleta que necesita tu respuesta.", false);
+  revalidatePath(base);
+  redirect(`${base}?consulta=${delivery}`);
+}
+
+export async function addOrderExtraAction(formData: FormData) {
+  const parsed = orderExtraSchema.safeParse(formValues(formData));
+  const base = `/dashboard/ordenes/${String(formData.get("orden_id") ?? "")}`;
+  if (!parsed.success) redirect(`${base}?error=extra-datos`);
+  const { supabase, workshop, user } = await requireWorkshop();
+  const { data: order } = await supabase.from("orden_trabajo").select("id, margen_extra")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+  const amount = parsed.data.monto ?? 0;
+
+  const [{ data: extras }, { data: queries }] = await Promise.all([
+    supabase.from("orden_trabajo_extra").select("monto").eq("orden_trabajo_id", order.id),
+    supabase.from("orden_trabajo_consulta").select("monto").eq("orden_trabajo_id", order.id).eq("estado", "autorizada"),
+  ]);
+  const allowed = Number(order.margen_extra) + (queries ?? []).reduce((sum, item) => sum + Number(item.monto ?? 0), 0);
+  const used = (extras ?? []).reduce((sum, item) => sum + Number(item.monto), 0);
+  // El gasto extra solo puede superar el margen si el cliente autorizó una consulta con monto.
+  if (used + amount > allowed) redirect(`${base}?error=margen-superado`);
+
+  const { error } = await supabase.from("orden_trabajo_extra").insert({
+    orden_trabajo_id: order.id,
+    descripcion: parsed.data.descripcion,
+    monto: amount,
+    creado_por: user.id,
+  });
+  if (error) {
+    console.error("No se pudo registrar el gasto extra.", { code: error.code, message: error.message });
+    redirect(`${base}?error=${error.code === "42P01" || error.code === "PGRST205" ? "migracion" : "extra-datos"}`);
+  }
+  revalidatePath(base);
+  redirect(`${base}?extra=1`);
+}
+
+export async function deleteOrderExtraAction(formData: FormData) {
+  const parsed = orderExtraDeleteSchema.safeParse(formValues(formData));
+  const base = `/dashboard/ordenes/${String(formData.get("orden_id") ?? "")}`;
+  if (!parsed.success) redirect(`${base}?error=extra-datos`);
+  const { supabase, workshop } = await requireWorkshop();
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+  await supabase.from("orden_trabajo_extra").delete().eq("id", parsed.data.id).eq("orden_trabajo_id", order.id);
+  revalidatePath(base);
+  redirect(`${base}?extra=1`);
+}
+
+export async function togglePhotoSharedAction(formData: FormData) {
+  const parsed = photoShareSchema.safeParse(formValues(formData));
+  const base = `/dashboard/ordenes/${String(formData.get("orden_id") ?? "")}/fotos`;
+  if (!parsed.success) redirect(base);
+  const { supabase, workshop } = await requireWorkshop();
+  const { data: order } = await supabase.from("orden_trabajo").select("id")
+    .eq("id", parsed.data.orden_id).eq("taller_id", workshop.id).maybeSingle();
+  if (!order) redirect("/dashboard/ordenes?error=datos");
+  await supabase.from("orden_trabajo_foto").update({ compartida: parsed.data.compartida === "true" })
+    .eq("id", parsed.data.id).eq("orden_trabajo_id", order.id);
+  revalidatePath(base);
+  redirect(base);
+}
+
+// Acción pública: el cliente responde desde su link; el token identifica la orden.
+export async function respondOrderQueryAction(formData: FormData) {
+  const parsed = queryResponseSchema.safeParse(formValues(formData));
+  const token = String(formData.get("token") ?? "");
+  if (!parsed.success) redirect(`/seguimiento/${encodeURIComponent(token)}?error=datos`);
+  const admin = createAdminClient();
+  const { data: order } = await admin.from("orden_trabajo").select("id, estado")
+    .or(`token_seguimiento.eq.${parsed.data.token},codigo_corto.eq.${parsed.data.token}`).maybeSingle();
+  if (!order || order.estado === "entregado") redirect("/");
+  await admin.from("orden_trabajo_consulta").update({
+    estado: parsed.data.decision,
+    comentario_cliente: parsed.data.comentario || null,
+    respondida_at: new Date().toISOString(),
+  }).eq("id", parsed.data.consulta_id).eq("orden_trabajo_id", order.id).eq("estado", "pendiente");
+  revalidatePath(`/seguimiento/${parsed.data.token}`);
+  revalidatePath(`/dashboard/ordenes/${order.id}`);
+  redirect(`/seguimiento/${parsed.data.token}?respondida=1`);
 }

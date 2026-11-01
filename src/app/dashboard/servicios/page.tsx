@@ -2,8 +2,6 @@ import Link from "next/link";
 import {
   createServiceAction,
   createServiceProcessAction,
-  updateServiceProcessAction,
-  updateServiceProcessesAction,
 } from "@/app/actions";
 import { formatAmount, processComponentCategories, serviceCategories } from "@/lib/presentation";
 import { requireCatalogManager } from "@/lib/workshop";
@@ -16,22 +14,26 @@ type ServicesPageProps = {
     procesoCreado?: string;
     procesoActualizado?: string;
     procesosActualizados?: string;
+    modo?: string;
+    parte?: string;
   };
 };
 
 export default async function ServicesPage({ searchParams }: ServicesPageProps) {
   const { supabase, workshop } = await requireCatalogManager();
   const view = searchParams.vista === "procesos" ? "procesos" : "servicios";
+  const partsMode = searchParams.modo === "partes";
+  const selectedPart = partsMode ? processComponentCategories.find((category) => category.id === searchParams.parte) : undefined;
   const [
     { data: services, error: serviceError },
     { data: processes, error: processError },
     { data: serviceProcesses, error: serviceProcessError },
   ] = await Promise.all([
     supabase.from("servicio")
-      .select("id, nombre, categoria, precio_base, tiempo_estimado_min, checklist_plantilla")
+      .select("id, nombre, categoria, precio_base, tiempo_estimado_min, checklist_plantilla, guia_proceso")
       .eq("taller_id", workshop.id).order("nombre"),
     supabase.from("proceso_servicio")
-      .select("id, nombre, categoria_componente, importe_referencia, descuento_servicio_pct")
+      .select("id, nombre, categoria_componente, importe_referencia, descuento_servicio_pct, guia_proceso")
       .eq("taller_id", workshop.id).order("nombre"),
     supabase.from("servicio_proceso")
       .select("servicio_id, proceso_id, orden")
@@ -39,6 +41,13 @@ export default async function ServicesPage({ searchParams }: ServicesPageProps) 
   ]);
 
   const processMap = new Map((processes ?? []).map((process) => [process.id, process]));
+  const processCountByPart = new Map<string, number>();
+  for (const process of processes ?? []) {
+    processCountByPart.set(process.categoria_componente, (processCountByPart.get(process.categoria_componente) ?? 0) + 1);
+  }
+  const visibleProcesses = selectedPart
+    ? (processes ?? []).filter((process) => process.categoria_componente === selectedPart.id)
+    : (processes ?? []);
   const serviceProcessMap = new Map<string, string[]>();
   for (const association of serviceProcesses ?? []) {
     const processIds = serviceProcessMap.get(association.servicio_id) ?? [];
@@ -91,78 +100,17 @@ export default async function ServicesPage({ searchParams }: ServicesPageProps) 
               <h2 className="text-xl font-bold text-ink">Paquetes de servicio</h2>
               <p className="mt-1 text-sm text-[#748079]">{services?.length ?? 0} disponibles para las órdenes</p>
             </div>
-            <a href="#nuevo-servicio" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-forest px-5 text-sm font-bold text-white hover:bg-[#125840]">
-              Crear servicio
-            </a>
           </div>
 
-          {(services ?? []).map((service) => {
-            const legacyChecklist = Array.isArray(service.checklist_plantilla)
-              ? service.checklist_plantilla.filter((item): item is { item: string; importe_referencia?: number | null } =>
-                typeof item === "object" && item !== null && !Array.isArray(item) && typeof item.item === "string")
-              : [];
-            const associatedProcesses = (serviceProcessMap.get(service.id) ?? [])
-              .map((processId) => processMap.get(processId))
-              .filter((process): process is NonNullable<typeof process> => Boolean(process));
-            const selectedProcessIds = new Set(associatedProcesses.map((process) => process.id));
-            const displayedProcesses = associatedProcesses.length
-              ? associatedProcesses.map((process) => process.nombre)
-              : legacyChecklist.map((item) => item.item);
-
-            return (
-              <article key={service.id} className="rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <span className="inline-flex rounded-full bg-[#edf4eb] px-3 py-1 text-xs font-bold text-forest">{serviceCategories[service.categoria]}</span>
-                    <h3 className="mt-2 break-words text-xl font-bold text-ink">{service.nombre}</h3>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-xl font-bold text-ink">${formatAmount(service.precio_base)}</p>
-                    <p className="mt-1 text-sm text-[#748079]">{service.tiempo_estimado_min} min estimados</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 border-t border-[#edf0ec] pt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#87928b]">Incluye</p>
-                  {displayedProcesses.length ? (
-                    <ul className="mt-2 flex flex-wrap gap-2">
-                      {displayedProcesses.slice(0, 4).map((processName) => (
-                        <li key={processName} className="rounded-lg bg-[#f3f5f2] px-3 py-2 text-sm text-[#414e47]">{processName}</li>
-                      ))}
-                      {displayedProcesses.length > 4 ? <li className="rounded-lg bg-[#f3f5f2] px-3 py-2 text-sm font-semibold text-[#65716a]">+{displayedProcesses.length - 4} más</li> : null}
-                    </ul>
-                  ) : <p className="mt-2 text-sm text-[#748079]">Todavía no tiene procesos asociados.</p>}
-                </div>
-
-                <details className="mt-4 border-t border-[#edf0ec] pt-3">
-                  <summary className="flex min-h-12 cursor-pointer items-center text-sm font-bold text-forest">Editar procesos incluidos</summary>
-                  <form action={updateServiceProcessesAction} className="mt-3">
-                    <input type="hidden" name="servicio_id" value={service.id} />
-                    <fieldset className="rounded-xl border border-[#e2e7e1] bg-[#fafbf9] p-3 sm:p-4">
-                      <legend className="px-1 text-sm font-semibold text-ink">Elegí las tareas del paquete</legend>
-                      <div className="max-h-72 space-y-1 overflow-y-auto">
-                        {(processes ?? []).map((process) => (
-                          <label key={process.id} htmlFor={`service-${service.id}-process-${process.id}`} className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-white">
-                            <input id={`service-${service.id}-process-${process.id}`} name="proceso_id" type="checkbox" value={process.id} defaultChecked={selectedProcessIds.has(process.id)} className="h-6 w-6 accent-forest" />
-                            <span className="min-w-0 flex-1">{process.nombre}</span>
-                            {process.importe_referencia != null ? <span className="shrink-0 text-xs text-[#748079]">ref. ${formatAmount(process.importe_referencia)}</span> : null}
-                          </label>
-                        ))}
-                        {processes?.length === 0 ? <p className="py-4 text-sm text-[#748079]">Primero agregá procesos desde la pestaña Procesos.</p> : null}
-                      </div>
-                    </fieldset>
-                    <button type="submit" className="mt-3 min-h-14 w-full rounded-xl border border-[#cddbcf] px-4 py-3 text-base font-bold text-forest hover:bg-[#f2f7f1]">Guardar composición</button>
-                  </form>
-                </details>
-              </article>
-            );
-          })}
-
-          {services?.length === 0 ? <div className="rounded-2xl border border-dashed border-[#cdd6ce] bg-white px-5 py-10 text-center text-sm text-[#65716a]">Todavía no hay servicios. Creá el primer paquete para empezar.</div> : null}
-
-          <details id="nuevo-servicio" className="scroll-mt-4 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-            <summary className="flex min-h-12 cursor-pointer items-center text-lg font-bold text-forest">Crear un servicio nuevo</summary>
-            <form action={createServiceAction} className="mt-4 space-y-4">
+          <details id="nuevo-servicio" className="group scroll-mt-4 rounded-2xl border border-[#e2e7e1] bg-white shadow-sm">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 [&::-webkit-details-marker]:hidden">
+              <span className="text-base font-bold text-ink">Crear servicio</span>
+              <span className="inline-flex min-h-11 items-center rounded-xl bg-forest px-5 text-sm font-bold text-white group-hover:bg-[#125840]">
+                <span className="group-open:hidden">+ Nuevo servicio</span>
+                <span className="hidden group-open:inline">Cerrar</span>
+              </span>
+            </summary>
+            <form action={createServiceAction} className="space-y-4 border-t border-[#edf0ec] p-5 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-semibold" htmlFor="service-name">Nombre
                   <input id="service-name" name="nombre" required maxLength={255} className="form-input" />
@@ -198,64 +146,131 @@ export default async function ServicesPage({ searchParams }: ServicesPageProps) 
                   {processes?.length === 0 ? <p className="py-4 text-sm text-[#748079]">Podés asociar procesos después desde la pestaña Procesos.</p> : null}
                 </div>
               </fieldset>
-              <button type="submit" className="min-h-14 w-full rounded-xl bg-forest px-5 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840]">Guardar servicio</button>
+              <label className="block text-sm font-semibold" htmlFor="service-guide">Guía del proceso <span className="font-normal text-[#748079]">(opcional)</span>
+                <textarea id="service-guide" name="guia_proceso" rows={5} maxLength={5000} placeholder="Explicá paso a paso cómo se realiza este servicio, como guía para el mecánico." className="form-input" />
+              </label>
+              <button type="submit" className="min-h-14 w-full rounded-xl bg-forest px-5 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840] sm:w-auto">Guardar servicio</button>
             </form>
           </details>
+
+          {(services ?? []).map((service) => {
+            const legacyChecklist = Array.isArray(service.checklist_plantilla)
+              ? service.checklist_plantilla.filter((item): item is { item: string; importe_referencia?: number | null } =>
+                typeof item === "object" && item !== null && !Array.isArray(item) && typeof item.item === "string")
+              : [];
+            const associatedProcesses = (serviceProcessMap.get(service.id) ?? [])
+              .map((processId) => processMap.get(processId))
+              .filter((process): process is NonNullable<typeof process> => Boolean(process));
+            const displayedProcesses = associatedProcesses.length
+              ? associatedProcesses.map((process) => process.nombre)
+              : legacyChecklist.map((item) => item.item);
+
+            return (
+              <article key={service.id} className="group/row relative flex min-h-14 items-center gap-3 rounded-2xl border border-[#e2e7e1] bg-white px-4 py-2 shadow-sm hover:z-10 hover:border-[#cddbcf] focus-within:z-10">
+                <span className="hidden shrink-0 rounded-full bg-[#edf4eb] px-3 py-1 text-xs font-bold text-forest sm:inline-flex">{serviceCategories[service.categoria]}</span>
+                <h3 tabIndex={0} className="min-w-0 flex-1 truncate text-base font-bold text-ink outline-none">{service.nombre}</h3>
+                <span className="hidden shrink-0 text-sm text-[#748079] md:inline">{service.tiempo_estimado_min} min</span>
+                <span className="shrink-0 text-base font-bold text-ink">${formatAmount(service.precio_base)}</span>
+                <Link href={`/dashboard/servicios/${service.id}`} aria-label={`Modificar ${service.nombre}`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-[#cddbcf] px-4 text-sm font-bold text-forest hover:bg-[#f2f7f1]">Modificar</Link>
+
+                <div role="tooltip" className="pointer-events-none invisible absolute left-4 top-full z-20 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-xl border border-[#e2e7e1] bg-white p-4 opacity-0 shadow-lg transition group-hover/row:visible group-hover/row:opacity-100 group-focus-within/row:visible group-focus-within/row:opacity-100">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#87928b]">Procesos ({displayedProcesses.length})</p>
+                  {displayedProcesses.length ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#414e47]">
+                      {displayedProcesses.map((processName) => <li key={processName}>{processName}</li>)}
+                    </ul>
+                  ) : <p className="mt-2 text-sm text-[#748079]">Todavía no tiene procesos asociados.</p>}
+                </div>
+              </article>
+            );
+          })}
+
+          {services?.length === 0 ? <div className="rounded-2xl border border-dashed border-[#cdd6ce] bg-white px-5 py-10 text-center text-sm text-[#65716a]">Todavía no hay servicios. Creá el primer paquete para empezar.</div> : null}
+
         </section>
       ) : (
         <section aria-label="Procesos del taller" className="space-y-5">
           <header className="flex flex-wrap items-end justify-between gap-3 px-1">
             <div>
-              <h2 className="text-xl font-bold text-ink">Tareas del taller</h2>
+              <h2 className="text-xl font-bold text-ink">{selectedPart ? `Procesos de ${selectedPart.label}` : "Tareas del taller"}</h2>
               <p className="mt-1 text-sm text-[#748079]">Estas tareas se pueden combinar en distintos servicios. Sus importes son solo referencias.</p>
             </div>
-            <a href="#nuevo-proceso" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-forest px-5 text-sm font-bold text-white hover:bg-[#125840]">Agregar proceso</a>
+            <div role="group" aria-label="Cambiar vista de procesos" className="grid grid-cols-2 gap-1 rounded-xl border border-[#e2e7e1] bg-white p-1 shadow-sm">
+              <Link href="/dashboard/servicios?vista=procesos&modo=lista" aria-current={!partsMode ? "true" : undefined} className={`flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold ${!partsMode ? "bg-forest text-white" : "text-[#56635c] hover:bg-[#f2f5f1]"}`}>Listado</Link>
+              <Link href="/dashboard/servicios?vista=procesos&modo=partes" aria-current={partsMode ? "true" : undefined} className={`flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold ${partsMode ? "bg-forest text-white" : "text-[#56635c] hover:bg-[#f2f5f1]"}`}>Por partes</Link>
+            </div>
           </header>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {(processes ?? []).map((process) => (
-              <article key={process.id} className="rounded-2xl border border-[#e2e7e1] bg-white p-4 shadow-sm sm:p-5">
-                <form action={updateServiceProcessAction} className="space-y-3">
-                  <input type="hidden" name="id" value={process.id} />
-                  <h3 className="min-h-10 font-semibold leading-snug text-ink">{process.nombre}</h3>
-                  <label className="block text-sm font-semibold text-[#414e47]">Componente
-                    <select name="categoria_componente" defaultValue={process.categoria_componente} required className="form-input">
-                      {processComponentCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-semibold text-[#414e47]">Precio de referencia
-                    <input name="importe_referencia" type="number" min="0" step="0.01" defaultValue={process.importe_referencia ?? ""} required className="form-input" />
-                  </label>
-                  <label className="block text-sm font-semibold text-[#414e47]">Descuento si se agrega a un servicio (%)
-                    <input name="descuento_servicio_pct" type="number" min="0" max="100" step="0.01" defaultValue={process.descuento_servicio_pct} required className="form-input" />
-                  </label>
-                  <p className="text-xs text-[#748079]">Precio adicional con servicio: {process.importe_referencia == null ? "definir precio" : `$${formatAmount(process.importe_referencia * (1 - process.descuento_servicio_pct / 100))}`}</p>
-                  <button type="submit" className="min-h-12 w-full rounded-xl border border-[#cddbcf] px-4 text-sm font-bold text-forest hover:bg-[#f2f7f1]">Guardar precio y descuento</button>
-                </form>
-              </article>
-            ))}
-            {processes?.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-[#cdd6ce] bg-white px-5 py-10 text-center text-sm text-[#65716a]">Todavía no hay procesos cargados. Agregá las tareas habituales del taller.</div> : null}
-          </div>
-
-          <form id="nuevo-proceso" action={createServiceProcessAction} className="scroll-mt-4 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-forest">Catálogo de tareas</p>
-            <h3 className="mt-1 text-xl font-bold text-ink">Agregar proceso</h3>
-            <p className="mt-1 text-sm text-[#748079]">Cargá una tarea una sola vez para reutilizarla en varios servicios.</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)_auto] sm:items-end">
-              <label className="block text-sm font-semibold" htmlFor="process-name">Nombre del proceso
-                <input id="process-name" name="nombre" required maxLength={255} className="form-input" />
-              </label>
-              <label className="block text-sm font-semibold" htmlFor="process-category">Componente
-                <select id="process-category" name="categoria_componente" required defaultValue="general" className="form-input">
-                  {processComponentCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
-                </select>
-              </label>
-              <label className="block text-sm font-semibold" htmlFor="process-reference-price">Importe de referencia <span className="font-normal text-[#748079]">(opcional)</span>
-                <input id="process-reference-price" name="importe_referencia" type="number" min="0" step="0.01" className="form-input" />
-              </label>
-              <button type="submit" className="min-h-14 rounded-xl bg-forest px-5 py-3 text-base font-bold text-white hover:bg-[#125840]">Guardar proceso</button>
+          {partsMode && !selectedPart ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {processComponentCategories.map((category) => (
+                <Link key={category.id} href={`/dashboard/servicios?vista=procesos&modo=partes&parte=${category.id}`} className="flex min-h-20 items-center justify-between gap-3 rounded-2xl border border-[#e2e7e1] bg-white px-5 py-4 shadow-sm transition hover:border-[#aabdad] hover:bg-[#f8faf7]">
+                  <span>
+                    <span className="block text-lg font-bold text-ink">{category.label}</span>
+                    <span className="mt-0.5 block text-sm text-[#748079]">{category.description}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-[#edf4eb] px-3 py-1 text-sm font-bold text-forest">{processCountByPart.get(category.id) ?? 0}</span>
+                </Link>
+              ))}
             </div>
-          </form>
+          ) : (
+            <>
+              {selectedPart ? (
+                <Link href="/dashboard/servicios?vista=procesos&modo=partes" className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-[#cddbcf] bg-white px-5 text-base font-bold text-forest shadow-sm transition hover:bg-[#f2f7f1]"><span aria-hidden="true">←</span> Volver a partes</Link>
+              ) : null}
+
+              <details id="nuevo-proceso" className="group scroll-mt-4 rounded-2xl border border-[#e2e7e1] bg-white shadow-sm">
+                <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="text-base font-bold text-ink">Agregar proceso{selectedPart ? ` a ${selectedPart.label}` : ""}</span>
+                  <span className="inline-flex min-h-11 items-center rounded-xl bg-forest px-5 text-sm font-bold text-white group-hover:bg-[#125840]">
+                    <span className="group-open:hidden">+ Nuevo proceso</span>
+                    <span className="hidden group-open:inline">Cerrar</span>
+                  </span>
+                </summary>
+                <form action={createServiceProcessAction} className="border-t border-[#edf0ec] p-5 sm:p-6">
+                  {selectedPart ? <input type="hidden" name="parte" value={selectedPart.id} /> : null}
+                  <p className="text-sm text-[#748079]">Cargá una tarea una sola vez para reutilizarla en varios servicios.</p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.55fr)_minmax(180px,0.55fr)]">
+                    <label className="block text-sm font-semibold" htmlFor="process-name">Nombre del proceso
+                      <input id="process-name" name="nombre" required maxLength={255} className="form-input" />
+                    </label>
+                    {selectedPart ? (
+                      <div className="text-sm font-semibold">
+                        <span>Componente</span>
+                        <input type="hidden" name="categoria_componente" value={selectedPart.id} />
+                        <p className="mt-2 flex min-h-12 items-center rounded-xl border border-[#e2e7e1] bg-[#f3f5f2] px-4 font-bold text-forest">{selectedPart.label}</p>
+                      </div>
+                    ) : (
+                      <label className="block text-sm font-semibold" htmlFor="process-category">Componente
+                        <select id="process-category" name="categoria_componente" required defaultValue="general" className="form-input">
+                          {processComponentCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    <label className="block text-sm font-semibold" htmlFor="process-reference-price">Importe de referencia <span className="font-normal text-[#748079]">(opcional)</span>
+                      <input id="process-reference-price" name="importe_referencia" type="number" min="0" step="0.01" className="form-input" />
+                    </label>
+                  </div>
+                  <label className="mt-4 block text-sm font-semibold" htmlFor="process-guide">Guía del proceso <span className="font-normal text-[#748079]">(opcional)</span>
+                    <textarea id="process-guide" name="guia_proceso" rows={4} maxLength={5000} placeholder="Explicá paso a paso cómo se realiza esta tarea, como guía para el mecánico." className="form-input" />
+                  </label>
+                  <button type="submit" className="mt-4 min-h-14 w-full rounded-xl bg-forest px-5 py-3 text-base font-bold text-white hover:bg-[#125840] sm:w-auto">Guardar proceso</button>
+                </form>
+              </details>
+
+              <div className="space-y-2">
+                {visibleProcesses.map((process) => (
+                  <article key={process.id} className="flex items-center gap-3 rounded-xl border border-[#e2e7e1] bg-white px-4 py-2.5 shadow-sm">
+                    <h3 className="min-w-0 flex-1 truncate font-semibold text-ink">{process.nombre}</h3>
+                    {!selectedPart ? <span className="hidden shrink-0 rounded-full bg-[#edf4eb] px-2.5 py-1 text-xs font-bold text-forest sm:inline">{processComponentCategories.find((category) => category.id === process.categoria_componente)?.label ?? process.categoria_componente}</span> : null}
+                    <span className="hidden shrink-0 text-sm font-semibold text-[#414e47] md:inline">{process.importe_referencia == null ? "Sin precio" : `$${formatAmount(process.importe_referencia)}`}</span>
+                    <Link href={`/dashboard/servicios/proceso/${process.id}`} aria-label={`Modificar ${process.nombre}`} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-[#cddbcf] px-4 text-sm font-bold text-forest hover:bg-[#f2f7f1]">Modificar</Link>
+                  </article>
+                ))}
+                {visibleProcesses.length === 0 ? <div className="rounded-2xl border border-dashed border-[#cdd6ce] bg-white px-5 py-10 text-center text-sm text-[#65716a]">{selectedPart ? `Todavía no hay procesos en ${selectedPart.label}.` : "Todavía no hay procesos cargados. Agregá las tareas habituales del taller."}</div> : null}
+              </div>
+            </>
+          )}
         </section>
       )}
     </>

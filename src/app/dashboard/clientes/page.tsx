@@ -3,7 +3,7 @@ import { createCustomerAction } from "@/app/actions";
 import { CustomerFields } from "@/components/customer-fields";
 import { requireWorkshop } from "@/lib/workshop";
 
-type CustomersPageProps = { searchParams: { q?: string; error?: string; creado?: string; actualizado?: string; return_to?: string } };
+type CustomersPageProps = { searchParams: { q?: string; error?: string; creado?: string; actualizado?: string; return_to?: string; crear?: string } };
 const isReceptionReturn = (returnTo?: string) => returnTo === "recepcion" || returnTo === "ordenes";
 
 const SEARCH_RESULT_LIMIT = 20;
@@ -12,6 +12,7 @@ const SEARCH_COLUMNS = ["nombre_completo", "dni", "telefono", "email"] as const;
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   const { supabase, workshop } = await requireWorkshop();
   const query = searchParams.q?.trim() ?? "";
+  const isCreateFormOpen = searchParams.crear === "1";
   let customers: {
     id: string;
     nombre_completo: string;
@@ -44,6 +45,11 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     customers = sortedCustomers.slice(0, SEARCH_RESULT_LIMIT);
   }
 
+  const baseHref = isReceptionReturn(searchParams.return_to) ? "/dashboard/clientes?return_to=recepcion" : "/dashboard/clientes";
+  const customerListHref = query ? `${baseHref}${baseHref.includes("?") ? "&" : "?"}q=${encodeURIComponent(query)}` : baseHref;
+  const openCreateHref = `${customerListHref}${customerListHref.includes("?") ? "&" : "?"}crear=1`;
+  const closeCreateHref = customerListHref;
+
   return (
     <>
       <header className="mb-6">
@@ -55,29 +61,45 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       {searchParams.creado ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Cliente registrado.</p> : null}
       {searchParams.actualizado ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Datos del cliente actualizados.</p> : null}
 
-      <form id="nuevo-cliente" action={createCustomerAction} className="scroll-mt-6 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-        {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
-        <div className="mb-5">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-forest">Registro</p>
-          <h2 className="mt-1 text-xl font-bold text-ink">Registrar cliente</h2>
-          <p className="mt-1 text-sm text-[#748079]">Los campos opcionales pueden completarse después.</p>
+      <section aria-label="Acciones de clientes" className="rounded-2xl border border-[#e2e7e1] bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <form method="get" role="search" className="flex w-full flex-1 items-center gap-2 rounded-2xl border border-[#e2e7e1] bg-[#f8faf7] px-3 py-2">
+            {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
+            <label className="sr-only" htmlFor="customer-search">Buscar clientes</label>
+            <input id="customer-search" name="q" type="search" minLength={2} maxLength={100} defaultValue={query} placeholder="Buscar cliente" className="form-input mt-0 min-w-0 border-0 bg-transparent px-0 shadow-none focus:ring-0" />
+            <button type="submit" className="min-h-10 shrink-0 rounded-xl bg-[#eef4ee] px-4 text-sm font-semibold text-forest hover:bg-[#e1eadf]">Buscar</button>
+          </form>
+
+          <Link
+            href={isCreateFormOpen ? closeCreateHref : openCreateHref}
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-forest px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#125840]"
+          >
+            {isCreateFormOpen ? "Cancelar" : "Nuevo Cliente"}
+          </Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <CustomerFields prefix="new-customer" />
-        </div>
-        <button type="submit" className="mt-5 min-h-12 w-full rounded-xl bg-forest px-5 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840] sm:w-auto">Guardar cliente</button>
-      </form>
+      </section>
+
+      {isCreateFormOpen ? (
+        <form id="nuevo-cliente" action={createCustomerAction} className="scroll-mt-6 mt-5 rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
+          {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
+          <div className="mb-5">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-forest">Registro</p>
+            <h2 className="mt-1 text-xl font-bold text-ink">Registrar cliente</h2>
+            <p className="mt-1 text-sm text-[#748079]">Los campos opcionales pueden completarse después.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <CustomerFields prefix="new-customer" />
+          </div>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <button type="submit" className="min-h-12 rounded-xl bg-forest px-5 py-3 text-base font-bold text-white shadow-sm hover:bg-[#125840]">Guardar cliente</button>
+            <Link href={closeCreateHref} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-[#dfe7df] bg-white px-5 py-3 text-base font-semibold text-[#2d3c35] hover:bg-[#f7faf7]">Cancelar</Link>
+          </div>
+        </form>
+      ) : null}
 
       <section aria-labelledby="customer-search-heading" className="mt-7">
         <h2 id="customer-search-heading" className="text-xl font-bold text-ink">Buscar cliente</h2>
         <p className="mt-1 text-sm text-[#748079]">Buscá por nombre, DNI, teléfono o correo electrónico.</p>
-        <form method="get" role="search" className="mt-3 flex gap-2 rounded-2xl border border-[#e2e7e1] bg-white p-3 shadow-sm">
-          {isReceptionReturn(searchParams.return_to) ? <input type="hidden" name="return_to" value="recepcion" /> : null}
-          <label className="sr-only" htmlFor="customer-search">Buscar clientes</label>
-          <input id="customer-search" name="q" type="search" minLength={2} maxLength={100} defaultValue={query} placeholder="Nombre, DNI, teléfono o correo" className="form-input mt-0 min-w-0" />
-          <button type="submit" className="min-h-12 shrink-0 rounded-xl bg-forest px-5 text-sm font-bold text-white hover:bg-[#125840]">Buscar</button>
-          {query ? <Link href={isReceptionReturn(searchParams.return_to) ? "/dashboard/clientes?return_to=recepcion" : "/dashboard/clientes"} className="shrink-0 self-center text-sm font-semibold text-forest hover:underline">Limpiar</Link> : null}
-        </form>
         {query.length < 2 ? (
           <p className="mt-4 rounded-xl border border-dashed border-[#cdd6ce] bg-white px-5 py-8 text-center text-sm text-[#65716a]">Ingresá al menos 2 caracteres para buscar. No cargamos clientes hasta que hagas una búsqueda.</p>
         ) : (

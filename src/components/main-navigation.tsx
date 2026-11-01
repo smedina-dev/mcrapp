@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bike, CalendarDays, ClipboardList, ClipboardPlus, LayoutDashboard, Shield, UsersRound, Wrench } from "lucide-react";
+import { BarChart3, Bike, CalendarDays, ClipboardList, ClipboardPlus, LayoutDashboard, Shield, UsersRound, Wrench } from "lucide-react";
 
 const baseNavigation = [
   { href: "/dashboard", label: "Resumen", icon: LayoutDashboard },
@@ -20,7 +20,10 @@ export function MainNavigation({ accessRole }: MainNavigationProps) {
   const navigation = [
     ...baseNavigation,
     ...(accessRole === "admin" || accessRole === "jefe_taller"
-      ? [{ href: "/dashboard/servicios", label: "Servicios", icon: Wrench }]
+      ? [
+        { href: "/dashboard/servicios", label: "Servicios", icon: Wrench },
+        { href: "/dashboard/reportes", label: "Reportes", icon: BarChart3 },
+      ]
       : []),
     ...(accessRole === "admin"
       ? [{ href: "/dashboard/equipo", label: "Equipo", icon: Shield }]

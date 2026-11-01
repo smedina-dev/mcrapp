@@ -1,20 +1,21 @@
 import Link from "next/link";
 import { ArrowUpRight, Bike, CalendarDays, ClipboardList, Wrench } from "lucide-react";
-import { formatDate, workOrderStates } from "@/lib/presentation";
+import { canManageRestrictedStates, formatDate, workOrderStates } from "@/lib/presentation";
+import { PriorityBadge } from "@/components/priority-badge";
 import { requireWorkshop } from "@/lib/workshop";
 
 export default async function DashboardPage() {
-  const { supabase, workshop, displayName } = await requireWorkshop();
+  const { supabase, workshop, displayName, accessRole } = await requireWorkshop();
   const now = new Date().toISOString();
   const [customers, appointments, openOrders, services, recentOrders] = await Promise.all([
     supabase.from("cliente").select("id", { count: "exact", head: true }).eq("taller_id", workshop.id),
     supabase.from("agenda_turno").select("id", { count: "exact", head: true })
       .eq("taller_id", workshop.id).gte("fecha_hora", now).neq("estado", "cancelado"),
     supabase.from("orden_trabajo").select("id", { count: "exact", head: true })
-      .eq("taller_id", workshop.id).neq("estado", "entregado"),
+      .eq("taller_id", workshop.id).not("estado", "in", canManageRestrictedStates(accessRole) ? "(entregado)" : "(entregado,listo)"),
     supabase.from("servicio").select("id", { count: "exact", head: true }).eq("taller_id", workshop.id),
     supabase.from("orden_trabajo")
-      .select("id, numero_ot, estado, fecha_ingreso, es_express")
+      .select("id, numero_ot, estado, fecha_ingreso, es_express, prioridad")
       .eq("taller_id", workshop.id).order("created_at", { ascending: false }).limit(5),
   ]);
 
@@ -60,7 +61,7 @@ export default async function DashboardPage() {
                   <td className="px-4 py-3 font-semibold text-ink">OT-{order.numero_ot}</td>
                   <td className="px-4 py-3 text-[#56635c]">{formatDate(order.fecha_ingreso)}</td>
                   <td className="px-4 py-3 text-[#56635c]">{order.estado ? workOrderStates[order.estado] : "Recepción"}</td>
-                  <td className="px-4 py-3 text-[#56635c]">{order.es_express ? "Express" : "Estándar"}</td>
+                  <td className="px-4 py-3 text-[#56635c]"><PriorityBadge priority={order.prioridad} /></td>
                 </tr>
               ))}
               {recentOrders.data?.length === 0 ? <tr><td colSpan={4} className="px-4 py-8 text-center text-[#748079]">Todavía no hay órdenes de trabajo.</td></tr> : null}

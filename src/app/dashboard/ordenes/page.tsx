@@ -1,23 +1,37 @@
 import Image from "next/image";
 import Link from "next/link";
 import { updateWorkOrderStateAction } from "@/app/actions";
-import { formatAmount, formatDate, workOrderStates } from "@/lib/presentation";
+import { assignableOrderStates, canManageRestrictedStates, comparePriority, formatAmount, formatDate, workOrderPriorities, workOrderPriorityOrder, workOrderStates, type WorkOrderState } from "@/lib/presentation";
+import { PriorityBadge } from "@/components/priority-badge";
+import { WorkOrderListItem } from "@/components/work-order-list-item";
 import { requireWorkshop } from "@/lib/workshop";
 
-type WorkOrdersPageProps = { searchParams: { error?: string; actualizado?: string; creado?: string } };
+type WorkOrdersPageProps = { searchParams: { error?: string; actualizado?: string; creado?: string; estado?: string; prioridad?: string } };
 
 export default async function WorkOrdersPage({ searchParams }: WorkOrdersPageProps) {
-  const { supabase, workshop } = await requireWorkshop();
+  const { supabase, workshop, accessRole } = await requireWorkshop();
+  const isManager = canManageRestrictedStates(accessRole);
+  const visibleStates = (Object.keys(workOrderStates) as WorkOrderState[]).filter((state) => state !== "entregado" && (isManager || state !== "listo"));
+  const stateFilter = visibleStates.find((state) => state === searchParams.estado);
+  const priorityFilter = workOrderPriorityOrder.find((priority) => priority === searchParams.prioridad);
+  const filterHref = (estado: string | undefined, prioridad: string | undefined) => {
+    const query = new URLSearchParams();
+    if (estado) query.set("estado", estado);
+    if (prioridad) query.set("prioridad", prioridad);
+    const text = query.toString();
+    return `/dashboard/ordenes${text ? `?${text}` : ""}`;
+  };
   const [
-    { data: orders },
+    { data: rawOrders },
     { data: services },
     { data: processes },
     { data: orderServices },
     { data: orderProcesses },
   ] = await Promise.all([
-    supabase.from("orden_trabajo").select("id, numero_ot, cliente_id, bicicleta_id, estado, es_express, presupuesto_total, inspeccion_recepcion, fotos, recepcion_cerrada, fecha_ingreso, fecha_entrega_estimada")
+    supabase.from("orden_trabajo").select("id, numero_ot, cliente_id, bicicleta_id, estado, es_express, prioridad, presupuesto_total, mecanico_id, inspeccion_recepcion, fotos, recepcion_cerrada, fecha_ingreso, fecha_entrega_estimada")
       .eq("taller_id", workshop.id).eq("recepcion_cerrada", true)
-      .order("es_express", { ascending: false, nullsFirst: false })
+      .neq("estado", "entregado")
+      .neq("estado", isManager ? "entregado" : "listo")
       .order("created_at", { ascending: false }),
     supabase.from("servicio").select("id, nombre").eq("taller_id", workshop.id),
     supabase.from("proceso_servicio").select("id, nombre").eq("taller_id", workshop.id),
@@ -25,16 +39,25 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
     supabase.from("orden_trabajo_proceso").select("orden_trabajo_id, proceso_id, precio_lista, descuento_porcentaje, precio_aplicado"),
   ]);
 
+  const orders = (rawOrders ?? [])
+    .filter((order) => !priorityFilter || order.prioridad === priorityFilter)
+    .filter((order) => !stateFilter || order.estado === stateFilter)
+    .sort((a, b) => comparePriority(a.prioridad, b.prioridad));
   const customerIds = Array.from(new Set((orders ?? []).map((order) => order.cliente_id)));
   const orderBicycleIds = Array.from(new Set((orders ?? []).map((order) => order.bicicleta_id)));
-  const [{ data: customers }, { data: bicycles }] = await Promise.all([
+  const [{ data: customers }, { data: bicycles }, { data: employees }] = await Promise.all([
     customerIds.length
       ? supabase.from("cliente").select("id, nombre_completo, peso_kg").eq("taller_id", workshop.id).in("id", customerIds)
       : Promise.resolve({ data: [] }),
     orderBicycleIds.length
       ? supabase.from("bicicleta").select("id, cliente_id, marca_modelo, tiene_shock").in("id", orderBicycleIds)
       : Promise.resolve({ data: [] }),
+    supabase.from("empleado").select("id, nombre, apellido, email").eq("taller_id", workshop.id),
   ]);
+  const mechanicLabel = (id: string | null) => {
+    const employee = employees?.find((candidate) => candidate.id === id);
+    return employee ? [employee.nombre, employee.apellido].filter(Boolean).join(" ") || employee.email : null;
+  };
 
   const photoPaths = Array.from(new Set((orders ?? []).flatMap((order) =>
     Array.isArray(order.fotos) ? order.fotos.filter((path): path is string => typeof path === "string") : [],
@@ -64,7 +87,7 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">Órdenes de trabajo</h1>
         <p className="mt-2 text-base text-[#65716a]">Seguimiento y entrega de bicicletas recibidas.</p>
       </header>
-      {searchParams.error ? <p role="alert" className="mb-5 rounded-xl border border-[#f1d3cd] bg-[#fff7f5] px-4 py-3 text-sm text-[#853321]">{searchParams.error === "estado" ? "No se pudo actualizar el estado de la orden. Revisá los datos e intentá nuevamente." : "No se pudieron validar los datos de la orden. Revisá los campos e intentá nuevamente."}</p> : null}
+      {searchParams.error ? <p role="alert" className="mb-5 rounded-xl border border-[#f1d3cd] bg-[#fff7f5] px-4 py-3 text-sm text-[#853321]">{searchParams.error === "permisos" ? "Solo el administrador o el jefe de taller pueden usar los estados Listo y Entregado." : searchParams.error === "estado" ? "No se pudo actualizar el estado de la orden. Revisá los datos e intentá nuevamente." : "No se pudieron validar los datos de la orden. Revisá los campos e intentá nuevamente."}</p> : null}
       {searchParams.actualizado ? <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">Orden actualizada.</p> : null}
       {searchParams.creado ? (
         <p role="status" className="mb-5 rounded-xl border border-[#d6e6d9] bg-[#f2f8f1] px-4 py-3 text-sm font-medium text-forest">
@@ -76,15 +99,31 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
 
       <section aria-label="Órdenes registradas" className="space-y-3">
         <div className="flex items-end justify-between gap-3 px-1">
-          <div><h2 className="text-xl font-bold text-ink">Órdenes registradas</h2><p className="mt-1 text-sm text-[#748079]">{orders?.length ?? 0} en total</p></div>
+          <div><h2 className="text-xl font-bold text-ink">Órdenes registradas</h2><p className="mt-1 text-sm text-[#748079]">{orders.length} en total</p></div>
           <Link href="/dashboard/recepcion" className="inline-flex min-h-11 items-center rounded-xl bg-forest px-4 text-sm font-bold text-white hover:bg-[#125840]">Nueva recepción</Link>
         </div>
-        {!orders?.length ? (
+        <div className="space-y-2 rounded-2xl border border-[#e2e7e1] bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por estado">
+            <span className="w-20 text-xs font-bold uppercase tracking-wide text-[#87928b]">Estado</span>
+            <Link href={filterHref(undefined, priorityFilter)} aria-current={!stateFilter ? "true" : undefined} className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${!stateFilter ? "border-forest bg-forest text-white" : "border-[#cddbcf] text-forest hover:bg-[#f2f7f1]"}`}>Todos</Link>
+            {visibleStates.map((state) => (
+              <Link key={state} href={filterHref(state, priorityFilter)} aria-current={stateFilter === state ? "true" : undefined} className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${stateFilter === state ? "border-forest bg-forest text-white" : "border-[#cddbcf] text-forest hover:bg-[#f2f7f1]"}`}>{workOrderStates[state]}</Link>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por prioridad">
+            <span className="w-20 text-xs font-bold uppercase tracking-wide text-[#87928b]">Prioridad</span>
+            <Link href={filterHref(stateFilter, undefined)} aria-current={!priorityFilter ? "true" : undefined} className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${!priorityFilter ? "border-forest bg-forest text-white" : "border-[#cddbcf] text-forest hover:bg-[#f2f7f1]"}`}>Todas</Link>
+            {workOrderPriorityOrder.map((priority) => (
+              <Link key={priority} href={filterHref(stateFilter, priority)} aria-current={priorityFilter === priority ? "true" : undefined} className={`inline-flex min-h-11 items-center gap-2 rounded-full border-2 px-4 text-sm font-bold ${priorityFilter === priority ? workOrderPriorities[priority].selected : "border-[#e2e7e1] text-[#56635c] hover:bg-[#fafbf9]"}`}><span aria-hidden="true" className={`h-3 w-3 rounded-full ${workOrderPriorities[priority].dot}`} />{workOrderPriorities[priority].label}</Link>
+            ))}
+          </div>
+        </div>
+        {!orders.length ? (
           <p className="rounded-2xl border border-dashed border-[#cdd6ce] bg-white p-6 text-sm text-[#65716a]">
-            Todavía no hay órdenes registradas. Iniciá una desde <Link href="/dashboard/recepcion" className="font-bold text-forest underline">Recepción</Link>.
+            {stateFilter || priorityFilter ? "No hay órdenes con ese filtro." : "Todavía no hay órdenes activas."} Las órdenes entregadas están en el historial del cliente o de la bicicleta.
           </p>
         ) : null}
-        {(orders ?? []).map((order) => {
+        {orders.map((order) => {
           const selectedServices = orderServiceMap.get(order.id) ?? [];
           const selectedProcesses = orderProcessMap.get(order.id) ?? [];
           const orderPhotoPaths = Array.isArray(order.fotos)
@@ -143,20 +182,26 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
             return details.length ? details.join(" · ") : "Sin dato";
           };
           return (
-            <article key={order.id} className="rounded-2xl border border-[#e2e7e1] bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-forest">Orden de trabajo</p>
-                  <h3 className="mt-1 text-xl font-bold text-ink">OT-{order.numero_ot}</h3>
+            <WorkOrderListItem
+              key={order.id}
+              orderId={order.id}
+              orderLabel={`OT-${order.numero_ot}`}
+              summary={(
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="min-w-[7rem]">
+                    <h3 className="text-lg font-bold text-ink">OT-{order.numero_ot}</h3>
+                    {order.prioridad && order.prioridad !== "normal" ? <PriorityBadge priority={order.prioridad} className="mt-1" /> : null}
+                  </div>
+                  <div className="min-w-[9rem]"><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Cliente</p><p className="font-semibold text-ink">{customers?.find((customer) => customer.id === order.cliente_id)?.nombre_completo ?? "Cliente"}</p></div>
+                  <div className="min-w-[9rem]"><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Bicicleta</p><p className="font-semibold text-ink">{bicycles?.find((bicycle) => bicycle.id === order.bicicleta_id)?.marca_modelo ?? "Bicicleta"}</p></div>
+                  <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Mecánico</p><p className={`text-sm font-semibold ${order.mecanico_id ? "text-ink" : "text-[#87928b]"}`}>{mechanicLabel(order.mecanico_id) ?? "Sin asignar"}</p></div>
+                  <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Estado</p><p className="text-sm font-semibold text-forest">{workOrderStates[order.estado ?? "recepcion"]}</p></div>
+                  <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Entrega est.</p><p className="text-sm text-[#414e47]">{formatDate(order.fecha_entrega_estimada)}</p></div>
+                  <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Total</p><p className="text-sm font-bold text-ink">${formatAmount(order.presupuesto_total)}</p></div>
                 </div>
-                <div className="text-right">
-                  {order.es_express ? <span className="rounded-full bg-[#a23d2d] px-3 py-1.5 text-xs font-extrabold tracking-wide text-white">EXPRESS · PRIORIDAD</span> : <span className="rounded-full bg-[#f0f3ef] px-3 py-1.5 text-xs font-semibold text-[#59665e]">Estándar</span>}
-                  <p className="mt-2 text-lg font-bold text-ink">${formatAmount(order.presupuesto_total)}</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 border-t border-[#edf0ec] pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Cliente</p><p className="mt-1 font-semibold text-ink">{customers?.find((customer) => customer.id === order.cliente_id)?.nombre_completo ?? "Cliente"}</p></div>
-                <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Bicicleta</p><p className="mt-1 font-semibold text-ink">{bicycles?.find((bicycle) => bicycle.id === order.bicicleta_id)?.marca_modelo ?? "Bicicleta"}</p></div>
+              )}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Ingreso</p><p className="mt-1 text-sm text-[#414e47]">{formatDate(order.fecha_ingreso)}</p></div>
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-[#87928b]">Entrega estimada</p><p className="mt-1 text-sm text-[#414e47]">{formatDate(order.fecha_entrega_estimada)}</p></div>
               </div>
@@ -242,14 +287,13 @@ export default async function WorkOrdersPage({ searchParams }: WorkOrdersPagePro
               <form action={updateWorkOrderStateAction} className="mt-4 flex flex-col gap-3 border-t border-[#edf0ec] pt-4 sm:flex-row sm:items-end">
                 <input type="hidden" name="id" value={order.id} />
                 <label className="block flex-1 text-sm font-semibold text-[#414e47]">Estado de la orden
-                  <select name="estado" aria-label={`Estado de OT-${order.numero_ot}`} defaultValue={order.estado ?? "recepcion"} className="form-input">{Object.entries(workOrderStates).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                  <select name="estado" aria-label={`Estado de OT-${order.numero_ot}`} defaultValue={order.estado ?? "recepcion"} className="form-input">{assignableOrderStates(accessRole).map((value) => <option key={value} value={value}>{workOrderStates[value]}</option>)}</select>
                 </label>
                 <button type="submit" className="min-h-14 rounded-xl border border-[#cddbcf] px-6 text-base font-bold text-forest hover:bg-[#f2f7f1]">Guardar estado</button>
               </form>
-            </article>
+            </WorkOrderListItem>
           );
         })}
-        {orders?.length === 0 ? <div className="rounded-2xl border border-dashed border-[#cdd6ce] bg-white px-5 py-10 text-center text-sm text-[#65716a]">No hay órdenes registradas.</div> : null}
       </section>
     </>
   );

@@ -1,5 +1,6 @@
 import { signInAction, signUpAction } from "@/app/actions";
 import { BrandLogo } from "@/components/brand-logo";
+import { PasswordInput } from "@/components/password-input";
 import { SignUpForm } from "@/components/sign-up-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -10,6 +11,7 @@ type LoginPageProps = {
 const errorMessages: Record<string, string> = {
   datos: "Revisá el correo y la contraseña. Debe tener al menos 8 caracteres y coincidir con su confirmación.",
   credenciales: "El correo o la contraseña no son correctos.",
+  bloqueado: "Demasiados intentos fallidos. Esperá 15 minutos antes de volver a intentar.",
   acceso: "Tu acceso al taller está desactivado. Contactá a un administrador.",
   registro: "No se pudo crear la cuenta. Probá con otro correo.",
   confirmacion: "El enlace de confirmación no es válido o ya venció. Solicitá uno nuevo.",
@@ -46,7 +48,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               <input id="login-email" name="email" type="email" autoComplete="email" required className="mt-2 block w-full rounded-md border border-line bg-white px-3 py-3 font-normal outline-none focus:border-forest focus:ring-2 focus:ring-forest/15" />
             </label>
             <label className="block text-sm font-semibold text-ink" htmlFor="login-password">Contraseña
-              <input id="login-password" name="password" type="password" autoComplete="current-password" minLength={8} required className="mt-2 block w-full rounded-md border border-line bg-white px-3 py-3 font-normal outline-none focus:border-forest focus:ring-2 focus:ring-forest/15" />
+              <PasswordInput id="login-password" name="password" autoComplete="current-password" minLength={8} hideOnChangeOf="login-email" />
             </label>
             <button type="submit" className="flex w-full items-center justify-center rounded-md bg-forest px-4 py-3 text-sm font-bold text-white transition hover:bg-[#125840]">Ingresar</button>
           </form>
